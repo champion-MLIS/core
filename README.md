@@ -3,6 +3,8 @@
 **Member Lifecycle Intelligence System**
 A Champion Church initiative · Built by Champion, for Champion, transferable to the Church Reimagined network.
 
+> **Strategic frame:** See [`docs/master-instructions.md`](docs/master-instructions.md) for the Master System Instructions — the authoritative vision that governs every agent, workflow, and decision in this repo.
+
 ---
 
 ## What This Is
@@ -22,6 +24,39 @@ This is not a CRM. It is not a database. It is a coordinated set of AI agents wo
 > *The gospel never changes. The methods must.*
 
 Every agent in this system exists to free pastors for pastoral work — not to replace pastoral work. AI proposes. Humans approve. People are never reduced to a record.
+
+---
+
+## The Four Jobs
+
+Every agent, workflow, and piece of code in this system serves one of four jobs:
+
+- **SENSE** — capture every meaningful signal about every person: first visit, response card, group sign-up, serving milestone, missed Sundays, life event, baptism, giving pattern shift, kid registered, anniversary.
+- **SPEAK** — communicate to people on behalf of Champion Church, by name, in Champion's voice, at the right moment, through the right channel. Never spammy, never invasive, never robotic-feeling.
+- **SEE** — give leadership a living dashboard of where every person actually is. Not a CRM. A discernment tool.
+- **SUGGEST** — recommend the next pastoral, ministry, or discipleship move; flag anyone who is drifting, stuck, or going dark.
+
+---
+
+## Three Operating Surfaces
+
+MLIS operates across three Claude surfaces. Every contributor must know which one they are in.
+
+- **Claude Chat** — where leadership thinks. Strategy, pastoral judgment, weekly review of the state of the church, decision support.
+- **Claude Cowork** — where Champion staff run recurring human-in-the-loop workflows. Drafting follow-up batches, working the approval inbox, pulling the weekly "who needs a touch" report.
+- **Claude Code** — where the actual integrations, agents, watchers, and automations get built. Production code, tested, documented, version-controlled.
+
+---
+
+## Executive Leadership Team
+
+The system operates under the direct authority of:
+
+- **Senior Pastor Stephen Bloomfield**
+- LaCinda Bloomfield
+- Becky Cota
+- Jessica McCormic
+- Shane McCormic
 
 ---
 
@@ -103,21 +138,21 @@ When an override is triggered, the system pauses, alerts the appropriate staff m
 ## Repository Structure
 
 ```
-champion-mlis-core/
-├── README.md               # This file — vision, architecture, operating rules
+.
+├── README.md                       # This file — overview and operating frame
 ├── docs/
-│   ├── architecture.md     # System architecture and agent map
-│   ├── voice-spec.md       # Champion voice guidelines and examples
-│   └── decisions.md        # Architecture decision log
+│   ├── master-instructions.md      # Master System Instructions (strategic spine)
+│   ├── architecture.md             # System architecture and agent map
+│   └── decisions.md                # Architecture decision log
 ├── schema/
-│   ├── person-profile.md   # Unified person profile data model
-│   └── stage-definitions.md # Stage criteria and transition logic
+│   └── person-profile.md           # Unified person profile data model
 ├── agents/
-│   └── AGENTS.md           # Agent roles, responsibilities, override rules
+│   └── AGENTS.md                   # Agent roles, responsibilities, override rules
 ├── workflows/
-│   └── guest-follow-up/    # First workflow — Guest → Connected
+│   └── guest-follow-up/
+│       └── spec.md                 # First workflow — Guest → Connected
 └── templates/
-    └── voice-samples.md    # Approved Champion voice communication samples
+    └── voice-samples.md            # Approved Champion voice communication samples
 ```
 
 ---
