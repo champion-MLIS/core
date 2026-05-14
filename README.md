@@ -171,25 +171,35 @@ When an override is triggered, the system pauses, alerts the appropriate staff m
 # 1. Install dependencies
 npm install
 
-# 2. Copy the env template and paste real values from 1Password
-#    ("Champion Church — Systems" vault → Planning Center)
+# 2. Copy the env template and paste real values from 1Password / Supabase
 cp .env.example .env
 
-# 3. Probe PCO: list the 20 most recently created people
+# 3. Probe PCO: list the 20 most recently created people (Step 1)
 npm run pco:recent
 
-# 4. JSON output for piping into other tools
-npm run pco:recent -- --limit=10 --json
+# 4. Run the Guest Intake Agent once — mirror PCO people into Supabase (Step 2)
+npm run intake:poll
 
-# 5. Run tests (no network, uses fixtures)
+# 5. JSON output for piping into other tools
+npm run intake:poll -- --json
+
+# 6. Run tests (no network, uses fixtures)
 npm test
 
-# 6. Typecheck and lint
+# 7. Typecheck and lint
 npm run typecheck
 npm run lint
 ```
 
-If `pco:recent` returns names you recognize, the foundation is real and Step 2 (Guest Intake Agent — persistence + detect-new-since-last-poll) can begin.
+### Where each credential comes from
+
+| Variable | Where to find it |
+|---|---|
+| `PCO_APP_ID` / `PCO_SECRET` | 1Password → "Champion Church — Systems" → Planning Center |
+| `SUPABASE_URL` | Already filled in `.env.example` (it's not a secret). Project `champion-mlis`. |
+| `SUPABASE_SERVICE_ROLE` | Supabase Dashboard → champion-mlis → Project Settings → API Keys → `service_role` (the **secret** one, not the publishable key) |
+
+> ⚠️ The `service_role` key bypasses Row-Level Security. Treat it like a master password — never paste it into a frontend, never commit it, never share it outside Champion Church staff.
 
 ---
 
@@ -197,11 +207,11 @@ If `pco:recent` returns names you recognize, the foundation is real and Step 2 (
 
 | Layer | Choice | Status |
 |---|---|---|
-| Runtime | Node.js 22 (TypeScript, strict) | ✅ |
+| Runtime | Node.js 20+ (TypeScript, strict) | ✅ |
 | HTTP | Native `fetch` + Zod validation | ✅ |
 | PCO auth | App ID + Secret (HTTP Basic) | ✅ |
 | Tests | Vitest with recorded fixtures | ✅ |
-| Database | Supabase (Postgres) | 🔄 Step 2 |
+| Database | Supabase (Postgres, RLS-locked, service_role from backend only) | ✅ |
 | Agent runtime | Anthropic Claude (Sonnet 4.6 + Haiku 4.5) | 🔄 Step 3 |
 | Email delivery | TBD (Sendgrid preferred) | ⬜ |
 | SMS delivery | TBD (Twilio preferred) | ⬜ |
@@ -214,9 +224,10 @@ If `pco:recent` returns names you recognize, the foundation is real and Step 2 (
 1. ✅ **Architecture captured** — this repo
 2. 🔄 **Guest Follow-Up workflow** — first build, end to end
    - ✅ **Step 1:** PCO read probe — credentials proven, response shape validated (`npm run pco:recent`)
-   - ⬜ **Step 2:** Guest Intake Agent — Supabase persistence + detect-new-since-last-poll
-   - ⬜ **Step 3:** Guest Follow-Up Agent — Claude draft + voice check
-   - ⬜ **Step 4:** Staff approval gate + send
+   - ✅ **Step 2:** Guest Intake Agent — Supabase persistence + watermark-driven incremental sync (`npm run intake:poll`)
+   - ⬜ **Step 3:** Trigger signal detection — forms, giving, child check-ins → `engagement_signals` + `followup_queue`
+   - ⬜ **Step 4:** Guest Follow-Up Agent — Claude draft + voice check
+   - ⬜ **Step 5:** Staff approval gate + send
 3. ⬜ **Weekly State of the Church** — after guest follow-up ships
 4. ⬜ Additional workflows — one at a time, never in parallel
 
@@ -229,11 +240,12 @@ All credentials are Champion Church organizational assets stored in 1Password un
 | Credential | Status |
 |------------|--------|
 | Planning Center API (App ID + Secret) | ✅ Acquired |
+| Supabase project (`champion-mlis`, us-west-1) | ✅ Provisioned — see [ADR-002](docs/decisions.md) |
+| Supabase `service_role` key | 🔄 Pending — grab from dashboard, paste to `.env` |
 | Subsplash API key | 🔄 Pending |
 | Google Workspace service account | 🔄 Pending |
 | SMS provider tokens | 🔄 Pending |
 | Anthropic production API key | 🔄 Pending |
-| Database credentials | 🔄 Pending |
 
 **Credential hygiene rule:** No credential is ever a personal asset. Every key, token, and secret belongs to Champion Church and is stored in the church-owned vault.
 

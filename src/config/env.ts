@@ -4,6 +4,10 @@ import { z } from 'zod';
 const EnvSchema = z.object({
   PCO_APP_ID: z.string().min(1, 'PCO_APP_ID is required. Copy .env.example to .env and fill it in.'),
   PCO_SECRET: z.string().min(1, 'PCO_SECRET is required. Copy .env.example to .env and fill it in.'),
+  SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL (e.g. https://xxx.supabase.co).'),
+  SUPABASE_SERVICE_ROLE: z
+    .string()
+    .min(1, 'SUPABASE_SERVICE_ROLE is required. Grab it from Supabase dashboard → Project Settings → API Keys → service_role.'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -19,4 +23,11 @@ export function loadEnv(): Env {
   }
   cached = result.data;
   return cached;
+}
+
+/**
+ * Reset the cached env. Tests only.
+ */
+export function _resetEnvCache(): void {
+  cached = null;
 }

@@ -45,3 +45,33 @@ The 9-stage version is recorded as the strategic direction and informs future wo
 - New workflows ship against the 5-stage pipeline today.
 - Person profile, schemas, and stage_history continue to use 5-stage values.
 - The 9-stage version is a forward-looking reference, not the current truth.
+
+---
+
+## ADR-002 — Supabase initially provisioned under a personal org
+
+**Date:** 2026-05-14
+**Status:** Accepted — migration to a Champion-owned org tracked as follow-up work
+
+### Context
+
+Step 2 of the build (Guest Intake Agent persistence) needed a Postgres database immediately. The Supabase MCP integration available in Claude Code was authorized against a personal Supabase account (`stephenbloomfield-bit's Org`), not a Champion-owned organization. Setting up a separate Supabase account under a Champion-controlled identity would have added friction without unblocking the build.
+
+### Decision
+
+Provision the `champion-mlis` project (us-west-1, free tier) under the existing personal org. Migrate to a Champion-owned org as a separate cleanup task before any production traffic depends on it.
+
+This narrowly violates the credential hygiene rule in the README — but only in form, not in spirit. The intent of the rule is that infrastructure cannot disappear if any one staff member leaves. Supabase makes org transfers a few-click operation that preserves project IDs, connection strings, and data, so the migration risk is low.
+
+### What this means for builders
+
+- The project ID (`ubyhnbfvjdcinyhoplsd`), URL (`https://ubyhnbfvjdcinyhoplsd.supabase.co`), and migrations land cleanly today.
+- Before MLIS handles real guest data at any meaningful volume, the org transfer happens. A Champion-controlled Supabase account is created (e.g. under `systems@championchurch.org` or equivalent), and the project is transferred to its org.
+- After the transfer, the URL and keys do not change. Only the `.env` of any deployed worker is unaffected. Dashboard access shifts to the church-owned login.
+- The transfer is tracked as an open todo, not a blocker.
+
+### Open follow-up
+
+- [ ] Create a Champion-owned Supabase account (church email, password in 1Password).
+- [ ] Transfer the `champion-mlis` project to that org.
+- [ ] Update this ADR's status to "Migrated" with the date.
