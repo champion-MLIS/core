@@ -9,7 +9,9 @@
   },
   "scripts": {
     "pco:recent": "tsx src/cli/pco-recent-people.ts",
+    "pco:forms": "tsx src/cli/pco-forms.ts",
     "intake:poll": "tsx src/cli/intake-poll.ts",
+    "intake:signals": "tsx src/cli/intake-signals.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

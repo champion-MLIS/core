@@ -7,6 +7,17 @@ export {
   type ListPeopleOptions,
   type ListPeopleResult,
 } from './people.ts';
+export {
+  listForms,
+  listFormSubmissions,
+  submissionPersonId,
+  type ListFormsOptions,
+  type ListFormsResult,
+  type ListSubmissionsOptions,
+  type ListSubmissionsResult,
+  type PcoForm,
+  type PcoFormSubmission,
+} from './forms.ts';
 export type {
   PcoPerson,
   PcoPeopleResponse,

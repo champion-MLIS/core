@@ -156,7 +156,9 @@ When an override is triggered, the system pauses, alerts the appropriate staff m
 │   └── voice-samples.md            # Approved Champion voice communication samples
 ├── src/
 │   ├── config/                     # Env loading and validation
-│   ├── pco/                        # Planning Center API client
+│   ├── pco/                        # Planning Center API client (people, forms, ...)
+│   ├── db/                         # Supabase client + generated types
+│   ├── intake/                     # Guest Intake Agent + signal poller
 │   └── cli/                        # Operator-facing CLI tools
 └── tests/                          # Vitest tests + fixtures
 ```
@@ -180,13 +182,20 @@ npm run pco:recent
 # 4. Run the Guest Intake Agent once — mirror PCO people into Supabase (Step 2)
 npm run intake:poll
 
-# 5. JSON output for piping into other tools
-npm run intake:poll -- --json
+# 5. Discover PCO forms and how the auto-classifier maps them (Step 3)
+npm run pco:forms
 
-# 6. Run tests (no network, uses fixtures)
+# 6. Run the signal poller — record engagement_signals and enqueue followups
+npm run intake:signals
+
+# 7. JSON output for piping into other tools
+npm run intake:poll -- --json
+npm run intake:signals -- --json
+
+# 8. Run tests (no network, uses fixtures)
 npm test
 
-# 7. Typecheck and lint
+# 9. Typecheck and lint
 npm run typecheck
 npm run lint
 ```
@@ -225,7 +234,9 @@ npm run lint
 2. 🔄 **Guest Follow-Up workflow** — first build, end to end
    - ✅ **Step 1:** PCO read probe — credentials proven, response shape validated (`npm run pco:recent`)
    - ✅ **Step 2:** Guest Intake Agent — Supabase persistence + watermark-driven incremental sync (`npm run intake:poll`)
-   - ⬜ **Step 3:** Trigger signal detection — forms, giving, child check-ins → `engagement_signals` + `followup_queue`
+   - ✅ **Step 3:** Signal poller — connect cards & prayer requests via PCO Forms → `engagement_signals` + `followup_queue` (`npm run intake:signals`)
+   - ⬜ **Step 3.1:** First-time giving signal via PCO Giving
+   - ⬜ **Step 3.2:** Child check-in signal via PCO Check-Ins
    - ⬜ **Step 4:** Guest Follow-Up Agent — Claude draft + voice check
    - ⬜ **Step 5:** Staff approval gate + send
 3. ⬜ **Weekly State of the Church** — after guest follow-up ships
