@@ -159,6 +159,7 @@ When an override is triggered, the system pauses, alerts the appropriate staff m
 │   ├── pco/                        # Planning Center API client (people, forms, ...)
 │   ├── db/                         # Supabase client + generated types
 │   ├── intake/                     # Guest Intake Agent + signal poller
+│   ├── agent/                      # Guest Follow-Up Agent (Claude drafting + voice check)
 │   └── cli/                        # Operator-facing CLI tools
 └── tests/                          # Vitest tests + fixtures
 ```
@@ -173,7 +174,7 @@ When an override is triggered, the system pauses, alerts the appropriate staff m
 # 1. Install dependencies
 npm install
 
-# 2. Copy the env template and paste real values from 1Password / Supabase
+# 2. Copy the env template and paste real values from 1Password / Supabase / Anthropic
 cp .env.example .env
 
 # 3. Probe PCO: list the 20 most recently created people (Step 1)
@@ -188,11 +189,13 @@ npm run pco:forms
 # 6. Run the signal poller — record engagement_signals and enqueue followups
 npm run intake:signals
 
-# 7. JSON output for piping into other tools
-npm run intake:poll -- --json
-npm run intake:signals -- --json
+# 7. Draft follow-ups for pending queue items (Step 4 — Claude)
+npm run agent:draft
 
-# 8. Run tests (no network, uses fixtures)
+# 7a. Test the agent on a specific person without writing to the queue:
+npm run agent:draft -- --person=<PCO_ID> --dry-run
+
+# 8. Run tests (no network, no Claude calls — fully stubbed)
 npm test
 
 # 9. Typecheck and lint
@@ -207,6 +210,7 @@ npm run lint
 | `PCO_APP_ID` / `PCO_SECRET` | 1Password → "Champion Church — Systems" → Planning Center |
 | `SUPABASE_URL` | Already filled in `.env.example` (it's not a secret). Project `champion-mlis`. |
 | `SUPABASE_SERVICE_ROLE` | Supabase Dashboard → champion-mlis → Project Settings → API Keys → `service_role` (the **secret** one, not the publishable key) |
+| `ANTHROPIC_API_KEY` | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) — generate a Workspace key under the Champion Church workspace. Required for `agent:draft`. |
 
 > ⚠️ The `service_role` key bypasses Row-Level Security. Treat it like a master password — never paste it into a frontend, never commit it, never share it outside Champion Church staff.
 
@@ -221,7 +225,7 @@ npm run lint
 | PCO auth | App ID + Secret (HTTP Basic) | ✅ |
 | Tests | Vitest with recorded fixtures | ✅ |
 | Database | Supabase (Postgres, RLS-locked, service_role from backend only) | ✅ |
-| Agent runtime | Anthropic Claude (Sonnet 4.6 + Haiku 4.5) | 🔄 Step 3 |
+| Agent runtime | Anthropic Claude (Sonnet 4.6 drafting + Haiku 4.5 voice check) | ✅ |
 | Email delivery | TBD (Sendgrid preferred) | ⬜ |
 | SMS delivery | TBD (Twilio preferred) | ⬜ |
 | Hosting | TBD (Supabase Edge Functions / Fly.io) | ⬜ |
@@ -235,9 +239,9 @@ npm run lint
    - ✅ **Step 1:** PCO read probe — credentials proven, response shape validated (`npm run pco:recent`)
    - ✅ **Step 2:** Guest Intake Agent — Supabase persistence + watermark-driven incremental sync (`npm run intake:poll`)
    - ✅ **Step 3:** Signal poller — connect cards & prayer requests via PCO Forms → `engagement_signals` + `followup_queue` (`npm run intake:signals`)
-   - ⬜ **Step 3.1:** First-time giving signal via PCO Giving
+   - ⬜ **Step 3.1:** First-time giving signal via PCO Giving (once Subsplash → PCO sync is live)
    - ⬜ **Step 3.2:** Child check-in signal via PCO Check-Ins
-   - ⬜ **Step 4:** Guest Follow-Up Agent — Claude draft + voice check
+   - ✅ **Step 4:** Guest Follow-Up Agent — Claude draft + voice check, writes to `followup_queue.payload` (`npm run agent:draft`)
    - ⬜ **Step 5:** Staff approval gate + send
 3. ⬜ **Weekly State of the Church** — after guest follow-up ships
 4. ⬜ Additional workflows — one at a time, never in parallel
@@ -256,7 +260,7 @@ All credentials are Champion Church organizational assets stored in 1Password un
 | Subsplash API key | 🔄 Pending |
 | Google Workspace service account | 🔄 Pending |
 | SMS provider tokens | 🔄 Pending |
-| Anthropic production API key | 🔄 Pending |
+| Anthropic API key (Workspace) | 🔄 Pending — required for `agent:draft` |
 
 **Credential hygiene rule:** No credential is ever a personal asset. Every key, token, and secret belongs to Champion Church and is stored in the church-owned vault.
 
