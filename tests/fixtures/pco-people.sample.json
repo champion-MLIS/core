@@ -1,0 +1,132 @@
+{
+  "data": [
+    {
+      "type": "Person",
+      "id": "1001",
+      "attributes": {
+        "first_name": "Maria",
+        "last_name": "Lopez",
+        "name": "Maria Lopez",
+        "nickname": null,
+        "given_name": null,
+        "membership": null,
+        "status": "active",
+        "child": false,
+        "birthdate": "1989-04-12",
+        "grade": null,
+        "created_at": "2026-05-12T15:42:11Z",
+        "updated_at": "2026-05-12T15:42:11Z"
+      },
+      "relationships": {
+        "emails": { "data": [{ "type": "Email", "id": "9001" }] },
+        "phone_numbers": { "data": [{ "type": "PhoneNumber", "id": "8001" }] },
+        "households": { "data": [{ "type": "Household", "id": "7001" }] }
+      }
+    },
+    {
+      "type": "Person",
+      "id": "1002",
+      "attributes": {
+        "first_name": "James",
+        "last_name": "Carter",
+        "name": "James Carter",
+        "nickname": "Jim",
+        "given_name": null,
+        "membership": "guest",
+        "status": "active",
+        "child": false,
+        "birthdate": "1975-09-03",
+        "grade": null,
+        "created_at": "2026-05-12T14:10:00Z",
+        "updated_at": "2026-05-12T14:10:00Z"
+      },
+      "relationships": {
+        "emails": { "data": [{ "type": "Email", "id": "9002" }] },
+        "phone_numbers": { "data": [] },
+        "households": { "data": [{ "type": "Household", "id": "7002" }] }
+      }
+    },
+    {
+      "type": "Person",
+      "id": "1003",
+      "attributes": {
+        "first_name": "Lily",
+        "last_name": "Carter",
+        "name": "Lily Carter",
+        "nickname": null,
+        "given_name": null,
+        "membership": null,
+        "status": "active",
+        "child": true,
+        "birthdate": "2017-02-20",
+        "grade": 2,
+        "created_at": "2026-05-12T14:11:15Z",
+        "updated_at": "2026-05-12T14:11:15Z"
+      },
+      "relationships": {
+        "emails": { "data": [] },
+        "phone_numbers": { "data": [] },
+        "households": { "data": [{ "type": "Household", "id": "7002" }] }
+      }
+    }
+  ],
+  "included": [
+    {
+      "type": "Email",
+      "id": "9001",
+      "attributes": {
+        "address": "maria.lopez@example.com",
+        "location": "Home",
+        "primary": true,
+        "blocked": false
+      }
+    },
+    {
+      "type": "Email",
+      "id": "9002",
+      "attributes": {
+        "address": "jim.carter@example.com",
+        "location": "Home",
+        "primary": true,
+        "blocked": false
+      }
+    },
+    {
+      "type": "PhoneNumber",
+      "id": "8001",
+      "attributes": {
+        "number": "+1-928-555-0142",
+        "location": "Mobile",
+        "primary": true,
+        "carrier": null
+      }
+    },
+    {
+      "type": "Household",
+      "id": "7001",
+      "attributes": {
+        "name": "Lopez",
+        "member_count": 1,
+        "primary_contact_id": "1001"
+      }
+    },
+    {
+      "type": "Household",
+      "id": "7002",
+      "attributes": {
+        "name": "Carter",
+        "member_count": 2,
+        "primary_contact_id": "1002"
+      }
+    }
+  ],
+  "links": {
+    "self": "https://api.planningcenteronline.com/people/v2/people?per_page=25&order=-created_at"
+  },
+  "meta": {
+    "total_count": 3,
+    "count": 3,
+    "can_order_by": ["created_at", "updated_at", "first_name", "last_name"],
+    "can_query_by": ["first_name", "last_name", "membership", "status"]
+  }
+}

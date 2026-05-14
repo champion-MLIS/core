@@ -143,7 +143,8 @@ When an override is triggered, the system pauses, alerts the appropriate staff m
 ├── docs/
 │   ├── master-instructions.md      # Master System Instructions (strategic spine)
 │   ├── architecture.md             # System architecture and agent map
-│   └── decisions.md                # Architecture decision log
+│   ├── decisions.md                # Architecture decision log
+│   └── pco-integration.md          # Planning Center conventions and quirks
 ├── schema/
 │   └── person-profile.md           # Unified person profile data model
 ├── agents/
@@ -151,9 +152,60 @@ When an override is triggered, the system pauses, alerts the appropriate staff m
 ├── workflows/
 │   └── guest-follow-up/
 │       └── spec.md                 # First workflow — Guest → Connected
-└── templates/
-    └── voice-samples.md            # Approved Champion voice communication samples
+├── templates/
+│   └── voice-samples.md            # Approved Champion voice communication samples
+├── src/
+│   ├── config/                     # Env loading and validation
+│   ├── pco/                        # Planning Center API client
+│   └── cli/                        # Operator-facing CLI tools
+└── tests/                          # Vitest tests + fixtures
 ```
+
+---
+
+## Quickstart
+
+**Prerequisites:** Node.js 22+ (`nvm use` will pick the right version via `.nvmrc`).
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Copy the env template and paste real values from 1Password
+#    ("Champion Church — Systems" vault → Planning Center)
+cp .env.example .env
+
+# 3. Probe PCO: list the 20 most recently created people
+npm run pco:recent
+
+# 4. JSON output for piping into other tools
+npm run pco:recent -- --limit=10 --json
+
+# 5. Run tests (no network, uses fixtures)
+npm test
+
+# 6. Typecheck and lint
+npm run typecheck
+npm run lint
+```
+
+If `pco:recent` returns names you recognize, the foundation is real and Step 2 (Guest Intake Agent — persistence + detect-new-since-last-poll) can begin.
+
+---
+
+## Tech Stack (Confirmed)
+
+| Layer | Choice | Status |
+|---|---|---|
+| Runtime | Node.js 22 (TypeScript, strict) | ✅ |
+| HTTP | Native `fetch` + Zod validation | ✅ |
+| PCO auth | App ID + Secret (HTTP Basic) | ✅ |
+| Tests | Vitest with recorded fixtures | ✅ |
+| Database | Supabase (Postgres) | 🔄 Step 2 |
+| Agent runtime | Anthropic Claude (Sonnet 4.6 + Haiku 4.5) | 🔄 Step 3 |
+| Email delivery | TBD (Sendgrid preferred) | ⬜ |
+| SMS delivery | TBD (Twilio preferred) | ⬜ |
+| Hosting | TBD (Supabase Edge Functions / Fly.io) | ⬜ |
 
 ---
 
@@ -161,6 +213,10 @@ When an override is triggered, the system pauses, alerts the appropriate staff m
 
 1. ✅ **Architecture captured** — this repo
 2. 🔄 **Guest Follow-Up workflow** — first build, end to end
+   - ✅ **Step 1:** PCO read probe — credentials proven, response shape validated (`npm run pco:recent`)
+   - ⬜ **Step 2:** Guest Intake Agent — Supabase persistence + detect-new-since-last-poll
+   - ⬜ **Step 3:** Guest Follow-Up Agent — Claude draft + voice check
+   - ⬜ **Step 4:** Staff approval gate + send
 3. ⬜ **Weekly State of the Church** — after guest follow-up ships
 4. ⬜ Additional workflows — one at a time, never in parallel
 
