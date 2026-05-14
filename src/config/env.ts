@@ -1,5 +1,11 @@
-import 'dotenv/config';
+import { config as dotenvConfig } from 'dotenv';
 import { z } from 'zod';
+
+// Load .env with override:true. Without this, an empty ambient env var
+// (e.g. Claude Desktop injects an empty ANTHROPIC_API_KEY into child
+// processes) wins over what's actually in the file. The .env file is
+// always the source of truth for this CLI.
+dotenvConfig({ override: true });
 
 const EnvSchema = z.object({
   PCO_APP_ID: z.string().min(1, 'PCO_APP_ID is required. Copy .env.example to .env and fill it in.'),
@@ -27,10 +33,10 @@ const AgentEnvSchema = EnvSchema.extend({
     ),
   ANTHROPIC_DRAFT_MODEL: z.string().default('claude-sonnet-4-6'),
   ANTHROPIC_VOICE_CHECK_MODEL: z.string().default('claude-haiku-4-5-20251001'),
-  CHAMPION_WEBSITE_URL: z.string().url().default('https://championchurch.org'),
-  CHAMPION_KIDS_URL: z.string().url().default('https://championchurch.org/kids'),
-  CHAMPION_GROUPS_URL: z.string().url().default('https://championchurch.org/groups'),
-  CHAMPION_GROWTH_TRACK_URL: z.string().url().default('https://championchurch.org/growth-track'),
+  CHAMPION_WEBSITE_URL: z.string().url().default('https://champion.church'),
+  CHAMPION_KIDS_URL: z.string().url().default('https://champion.church/kids'),
+  CHAMPION_GROUPS_URL: z.string().url().default('https://champion.church/groups'),
+  CHAMPION_GROWTH_TRACK_URL: z.string().url().default('https://champion.church/growth-track'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

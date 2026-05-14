@@ -44,9 +44,9 @@ Champion Church
 
 ---
 
-**SMS (160 characters or under)**
+**SMS — short enough that it reads like a friend texting, not a marketing blast. Aim for ~200 characters or under.**
 
-Hey [First Name]! So glad you joined us Sunday. We'd love to stay connected — championchurch.org has everything you need. See you soon! 🙌
+Hey [First Name]! So glad you joined us Sunday. We'd love to stay connected — champion.church has everything you need. See you soon! 🙌
 
 ---
 

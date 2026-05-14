@@ -242,6 +242,7 @@ npm run lint
    - ⬜ **Step 3.1:** First-time giving signal via PCO Giving (once Subsplash → PCO sync is live)
    - ⬜ **Step 3.2:** Child check-in signal via PCO Check-Ins
    - ✅ **Step 4:** Guest Follow-Up Agent — Claude draft + voice check, writes to `followup_queue.payload` (`npm run agent:draft`)
+   - ⬜ **Step 4.1:** Service context enrichment — pull sermon title and key points from PCO Services for the date of the guest's visit; reference in drafts when available
    - ⬜ **Step 5:** Staff approval gate + send
 3. ⬜ **Weekly State of the Church** — after guest follow-up ships
 4. ⬜ Additional workflows — one at a time, never in parallel

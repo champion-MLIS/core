@@ -168,7 +168,6 @@ const TEST_LINKS: ChampionLinks = {
 };
 
 beforeEach(() => {
-  uuidCounter = 0;
   _setVoiceRulesForTesting(FAKE_VOICE_RULES);
 });
 
