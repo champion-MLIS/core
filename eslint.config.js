@@ -56,6 +56,8 @@ export default [
     },
   },
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**'],
+    // Root ESLint config covers backend code only. Each app under apps/ has
+    // its own ESLint config (Next.js apps use `next lint`, for example).
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'apps/**'],
   },
 ];

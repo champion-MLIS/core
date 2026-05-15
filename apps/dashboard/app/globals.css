@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@theme {
+  /* Champion's voice is warm and grounded — defaults reflect that. */
+  --color-champion-ink: #1a1a1a;
+  --color-champion-soft: #f6f4ef;
+  --color-champion-accent: #8b6f47;
+  --color-champion-attention: #c46a48;
+}
+
+body {
+  color: var(--color-champion-ink);
+  background-color: var(--color-champion-soft);
+  font-feature-settings: 'ss01';
+}

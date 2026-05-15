@@ -154,7 +154,7 @@ When an override is triggered, the system pauses, alerts the appropriate staff m
 │       └── spec.md                 # First workflow — Guest → Connected
 ├── templates/
 │   └── voice-samples.md            # Approved Champion voice communication samples
-├── src/
+├── src/                            # Backend / CLI code (CMS sync, agents, journey logic)
 │   ├── config/                     # Env loading and validation
 │   ├── pco/                        # Planning Center API client (people, forms, ...)
 │   ├── cms/                        # CMS adapter interface (transferability)
@@ -163,6 +163,8 @@ When an override is triggered, the system pauses, alerts the appropriate staff m
 │   ├── journey/                    # 21-day touch sequence + enrollment + return detection
 │   ├── agent/                      # Guest Follow-Up Agent (Claude drafting + voice check)
 │   └── cli/                        # Operator-facing CLI tools
+├── apps/
+│   └── dashboard/                  # Next.js 15 in-house dashboard (Phase B)
 └── tests/                          # Vitest tests + fixtures
 ```
 
@@ -199,6 +201,14 @@ npm run agent:draft -- --person=<PCO_ID> --dry-run
 
 # 7b. Inspect a guest's 21-day journey + 8-touch schedule
 npm run touches:status -- --person=<PCO_ID>
+
+# 8. Run the in-house dashboard locally (Next.js, Phase B.1)
+cd apps/dashboard
+cp .env.example .env.local
+# fill in NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY + SUPABASE_SERVICE_ROLE
+npm install
+npm run dev
+# → open http://localhost:3000, sign in with your @championchurch.org email
 
 # 8. Run tests (no network, no Claude calls — fully stubbed)
 npm test
@@ -248,8 +258,14 @@ npm run lint
 
 3. 🔄 **21-Day Touch Sequence** — Stage 1 depth ([ADR-003](docs/decisions.md))
    - ✅ **Phase A:** Schedule + state machine — 8 touches per guest, enrollment on signal, return detection (`npm run touches:status -- --person=PCO_ID`)
-   - ⬜ **Phase A.2:** CMS adapter refactor — migrate existing PCO calls behind `src/cms/adapter.ts` interface for transferability
-   - ⬜ **Phase B:** In-house dashboard — Next.js + Supabase Auth/Realtime; My Touches Today / Touch Detail / Guest Journey / Becky's Dashboard / Pastor View
+   - ✅ **Phase A.2:** CMS adapter refactor — intake behind `src/cms/adapter.ts` interface for transferability
+   - 🔄 **Phase B:** In-house dashboard — Next.js + Supabase Auth + RLS
+     - ✅ **B.1:** Scaffold + magic-link auth (championchurch.org domain restricted) + protected home with system counts
+     - ⬜ **B.2:** My Touches Today (worklist screen)
+     - ⬜ **B.3:** Touch Detail (context, draft, action panel)
+     - ⬜ **B.4:** Guest Journey timeline
+     - ⬜ **B.5:** Becky's Dashboard (active journeys + metrics)
+     - ⬜ **B.6:** Pastor View (state of the church)
    - ⬜ **Phase C:** Touch-specific drafting — per-touch prompt rules, sermon context (formerly Step 4.1), family/kids personalization
    - ⬜ **Phase D:** Send + escalation — Twilio (SMS) + SendGrid (email), missed-touch grace period → Becky's queue
    - ⬜ **Phase E:** Tracking metrics — touch completion rate, recovery usage, return rate by touch, days-to-return
