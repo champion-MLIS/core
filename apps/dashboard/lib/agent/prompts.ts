@@ -77,8 +77,15 @@ Signed "Becky · Champion Church".`,
 
 const CHANNEL_RULES: Record<DraftContext['channel'], string> = {
   sms: `Channel: SMS. Aim ~200 characters or under (a friend texting, not a marketing blast). Don't pack in every link.`,
-  email: `Channel: Email. Subject line warm and personal. Body short — under 150 words ideally. 1–2 line paragraphs.`,
-  event_invite: `Channel: Either SMS (preferred — feels personal) or short email. If SMS, follow SMS rules above.`,
+  email: `Channel: Email. Body short — under 150 words ideally. 1–2 line paragraphs.
+
+CRITICAL — SUBJECT LINE: DO NOT include the recipient's first name in the subject. The body opens with their name as a greeting; repeating the name in the subject makes the email read like marketing automation. The subject should be warm but name-free.
+  ✓ "So glad you were with us Sunday"
+  ✓ "Just wanted to say hi"
+  ✓ "An invitation just for you"
+  ✗ "Great to meet you, Destiny"           — name in subject, do not do this
+  ✗ "Hey Destiny — just wanted to say hi"  — name in subject, do not do this`,
+  event_invite: `Channel: Either SMS (preferred — feels personal) or short email. If SMS, follow SMS rules above. If email, follow the email subject rule above (no recipient name in subject).`,
 };
 
 function describeTrigger(kind: DraftContext['triggerKind']): string {

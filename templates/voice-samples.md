@@ -22,7 +22,12 @@ This sentence, written by Pastor Stephen, is the voice benchmark. Every communic
 
 **Email**
 
-Subject: Great to meet you, [First Name] 👋
+Subject: So glad you were with us Sunday 👋
+
+(Note on subject: keep the subject warm but DON'T include the recipient's
+first name — the body opens with their name, and repeating it across both
+makes the email read like a marketing template. Pick one or the other,
+never both. Default: subject is name-free, body opens with name.)
 
 ---
 
