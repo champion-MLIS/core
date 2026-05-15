@@ -264,9 +264,17 @@ export default async function TouchDetailPage({
                   </div>
                 )}
               </dl>
-              <div className="mt-4 border-t border-zinc-100 pt-3 text-xs text-zinc-600">
-                Journey started by <strong>{journey.enrollment_kind.replace('_', ' ')}</strong> on{' '}
-                {formatDateTime(journey.enrolled_at)} ({relativeDay(journey.enrolled_at)})
+              <div className="mt-4 flex items-center justify-between border-t border-zinc-100 pt-3 text-xs text-zinc-600">
+                <span>
+                  Journey started by <strong>{journey.enrollment_kind.replace('_', ' ')}</strong>{' '}
+                  on {formatDateTime(journey.enrolled_at)} ({relativeDay(journey.enrolled_at)})
+                </span>
+                <Link
+                  href={`/journeys/${journey.id}`}
+                  className="text-zinc-900 underline-offset-4 hover:underline"
+                >
+                  View full journey →
+                </Link>
               </div>
             </div>
 

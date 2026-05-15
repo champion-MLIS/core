@@ -175,7 +175,12 @@ function OpenTouchRow({ touch }: { touch: TouchRowData }) {
         </form>
       </td>
       <td className="px-4 py-3">
-        <div className="font-medium text-zinc-900">{guestName}</div>
+        <Link
+          href={`/journeys/${touch.journey_id}`}
+          className="font-medium text-zinc-900 underline-offset-4 hover:underline"
+        >
+          {guestName}
+        </Link>
         <div className="text-xs text-zinc-500">PCO {touch.guest_journeys.people.pco_id}</div>
       </td>
       <td className="px-4 py-3">
