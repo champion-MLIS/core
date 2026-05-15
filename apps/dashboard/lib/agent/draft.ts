@@ -103,19 +103,38 @@ export async function generateTouchDraft(ctx: DraftContext): Promise<DraftBundle
 }
 
 function parseJsonStrict<T>(text: string, label: string): T {
-  const stripped = text
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
+  // Try plain parse first — fast path when Claude obeys.
+  const trimmed = text.trim();
   try {
-    return JSON.parse(stripped) as T;
-  } catch (err) {
-    throw new Error(
-      `${label}: Claude did not return valid JSON. First 300 chars:\n${text.slice(
-        0,
-        300,
-      )}\nParse error: ${String(err)}`,
-    );
+    return JSON.parse(trimmed) as T;
+  } catch {
+    /* fall through */
   }
+
+  // Strip any ```json / ``` fences anywhere in the text.
+  const defenced = trimmed.replace(/```(?:json)?/gi, '').trim();
+  try {
+    return JSON.parse(defenced) as T;
+  } catch {
+    /* fall through */
+  }
+
+  // Last resort: find the first '{' and the matching '}' and parse that
+  // slice. Handles Claude appending trailing commentary after the JSON.
+  const first = defenced.indexOf('{');
+  const last = defenced.lastIndexOf('}');
+  if (first >= 0 && last > first) {
+    const slice = defenced.slice(first, last + 1);
+    try {
+      return JSON.parse(slice) as T;
+    } catch (err) {
+      throw new Error(
+        `${label}: extracted slice still not valid JSON.\nSlice (first 500 chars):\n${slice.slice(0, 500)}\nError: ${String(err)}`,
+      );
+    }
+  }
+
+  throw new Error(
+    `${label}: no JSON object found in response. First 500 chars:\n${text.slice(0, 500)}`,
+  );
 }
