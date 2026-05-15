@@ -56,7 +56,14 @@ export default async function HomePage() {
         </p>
 
         <dl className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Tile label="Pending touches" value={pendingTouches ?? 0} />
+          <Link
+            href="/touches"
+            className="block rounded-lg border border-zinc-200 bg-white p-5 hover:border-zinc-400 hover:shadow-sm"
+          >
+            <dt className="text-sm font-medium text-zinc-500">Pending touches</dt>
+            <dd className="mt-2 text-3xl font-semibold tabular-nums">{pendingTouches ?? 0}</dd>
+            <dd className="mt-1 text-xs text-zinc-500">Open the worklist →</dd>
+          </Link>
           <Tile label="Active journeys" value={activeJourneys ?? 0} />
           <Tile label="Returned this cycle" value={returnedJourneys ?? 0} />
         </dl>
