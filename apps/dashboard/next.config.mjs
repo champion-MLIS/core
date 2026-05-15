@@ -7,12 +7,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   reactStrictMode: true,
   // Pin the file-tracing root so Next doesn't get confused by the parent
-  // repo's package-lock.json (this is a monorepo-style layout — the
-  // dashboard's package.json lives at apps/dashboard).
+  // repo's package-lock.json.
   outputFileTracingRoot: __dirname,
-  // The dashboard imports types from the parent monorepo
-  // (../../src/db/types.generated.ts). tsconfig path aliases handle this;
-  // no Webpack tweaks needed.
+  // Disable the persistent on-disk Webpack cache in dev. The .pack.gz cache
+  // race-conditions itself to death on macOS in this layout (Spotlight /
+  // iCloud / some other file-watcher trips writes). Slightly slower
+  // rebuilds, infinitely fewer ENOENT cascades.
+  webpack(config, { dev }) {
+    if (dev) {
+      config.cache = false;
+    }
+    return config;
+  },
 };
 
 export default nextConfig;
