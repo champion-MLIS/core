@@ -62,6 +62,18 @@ export default async function HomePage() {
             <h1 className="text-lg font-semibold">Dashboard</h1>
           </div>
           <form action={signOutAction}>
+            <Link
+              href="/touches"
+              className="mr-4 text-sm text-zinc-600 underline-offset-4 hover:underline"
+            >
+              Worklist
+            </Link>
+            <Link
+              href="/pastor"
+              className="mr-4 text-sm text-zinc-600 underline-offset-4 hover:underline"
+            >
+              Pastor View
+            </Link>
             <span className="mr-3 text-sm text-zinc-600">{user.email}</span>
             <button
               type="submit"

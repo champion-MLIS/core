@@ -98,6 +98,12 @@ export default async function TouchesPage() {
             >
               Dashboard
             </Link>
+            <Link
+              href="/pastor"
+              className="mr-4 text-sm text-zinc-600 underline-offset-4 hover:underline"
+            >
+              Pastor View
+            </Link>
             <span className="mr-3 text-sm text-zinc-600">{user.email}</span>
             <button
               type="submit"
