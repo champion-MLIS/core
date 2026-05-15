@@ -1,29 +1,30 @@
 /**
  * Guest Intake Agent — Step 2.
  *
- * Mirrors PCO People into the MLIS database. This is the foundation every
- * other agent stands on: nothing can be followed up with, transitioned, or
- * reported on until it exists in Supabase.
+ * Mirrors CMS people (Champion: PCO) into the MLIS database. This is the
+ * foundation every other agent stands on: nothing can be followed up
+ * with, transitioned, or reported on until it exists in Supabase.
+ *
+ * Vendor-neutral: takes a CmsAdapter (src/cms/adapter.ts), so this code
+ * doesn't know or care whether the data came from PCO, Breeze, or CCB.
  *
  * Scope of this module:
- *   - Read the last successful poll watermark.
- *   - Fetch a page of PCO People newer than the watermark.
- *   - For each person: upsert household → person → emails → phone_numbers.
- *   - Skip work for anyone with an active pastoral_flag (override stop).
- *   - Advance the watermark.
+ *   - Read the last successful poll watermark
+ *   - Fetch a page of CMS people newer than the watermark
+ *   - Upsert household → person → emails → phone_numbers
+ *   - Skip work for anyone with an active pastoral_flag (override stop)
+ *   - Advance the watermark
  *
- * Out of scope here (deferred to Step 3+):
- *   - Detecting trigger signals from forms / giving / check-ins.
- *   - Inserting into engagement_signals or followup_queue.
- *   - Stage transitions.
+ * Out of scope here (Phase C+):
+ *   - Detecting trigger signals from forms / giving / check-ins
+ *   - Inserting into engagement_signals or followup_queue
+ *   - Stage transitions
  *
- * Idempotency: every write is an UPSERT keyed on `pco_id`. Running this
- * function back-to-back with no new PCO data is a no-op.
+ * Idempotency: every write is an UPSERT keyed on the CMS id. Running this
+ * function back-to-back with no new CMS data is a no-op.
  */
 
-import type { PcoClient } from '../pco/client.ts';
-import { listPeople, findIncluded } from '../pco/people.ts';
-import type { PcoIncluded, PcoPerson } from '../pco/types.ts';
+import type { CmsAdapter, CmsEmail, CmsHousehold, CmsPerson, CmsPhone } from '../cms/index.ts';
 import type {
   Db,
   EmailInsert,
@@ -34,46 +35,31 @@ import type {
 } from '../db/index.ts';
 import { getWatermark, setWatermark } from './watermarks.ts';
 
-const WATERMARK_SOURCE = 'pco';
+const WATERMARK_SOURCE = 'cms';
 const WATERMARK_RESOURCE = 'people';
 
 export interface MirrorResult {
-  /** ISO timestamp of when this poll started. */
   pollStartedAt: string;
-  /** ISO timestamp of when this poll completed. */
   pollCompletedAt: string;
-  /** Number of PCO records examined this poll (page size, before dedupe). */
   recordsExamined: number;
-  /** Number of person records upserted (new or updated). */
   peopleUpserted: number;
-  /** Number of person records skipped because of an active pastoral_flag. */
   peopleSkippedFlagged: number;
-  /** Number of contact records (emails + phones) upserted. */
   contactsUpserted: number;
-  /** Number of households upserted. */
   householdsUpserted: number;
-  /** Watermark before the poll (null on cold start). */
   watermarkBefore: string | null;
-  /** Watermark after the poll. */
   watermarkAfter: string | null;
 }
 
 export interface MirrorOptions {
-  /** Page size to pull from PCO. Defaults to 50; max 100. */
   pageSize?: number;
-  /**
-   * Cold-start cutoff: how far back to look on the very first poll.
-   * Defaults to 90 days, which is enough to backfill anyone added recently
-   * without sucking in years of legacy directory records on day one.
-   */
+  /** Cold-start cutoff. Default 90 days. */
   coldStartLookback?: { days: number };
-  /** Caller-supplied current-time function — useful for tests. */
   now?: () => Date;
 }
 
 export async function runIntakeMirror(
   db: Db,
-  pco: PcoClient,
+  cms: CmsAdapter,
   opts: MirrorOptions = {},
 ): Promise<MirrorResult> {
   const now = opts.now ?? (() => new Date());
@@ -85,35 +71,26 @@ export async function runIntakeMirror(
   });
   const watermarkBefore = watermark?.last_seen_at ?? null;
 
-  // Pull the most recently created people from PCO. We ask for newest-first
-  // so the page is bounded to "recent stuff" — Champion's PCO directory has
-  // years of legacy records, and ordering ascending would return ancient
-  // records that fall outside the cold-start lookback window.
-  //
-  // Within the page, we sort ascending below so the watermark advances
-  // monotonically from oldest to newest as we process.
-  const { people, included } = await listPeople(pco, {
-    perPage: opts.pageSize ?? 50,
+  const { people, households, emails, phones } = await cms.listPeople({
+    per_page: opts.pageSize ?? 50,
     order: '-created_at',
-    include: ['emails', 'phone_numbers', 'households'],
   });
 
-  // Filter to records newer than the watermark. On cold start we use the
-  // lookback window so a freshly-provisioned system doesn't try to
-  // backfill thousands of legacy records.
   const cutoffMs = watermark
     ? Date.parse(watermark.last_seen_at)
     : now().getTime() - (opts.coldStartLookback?.days ?? 90) * 24 * 60 * 60 * 1000;
 
+  // Filter and sort ascending so the watermark advances monotonically.
   const candidates = people
-    .filter((p) => Date.parse(p.attributes.created_at) > cutoffMs)
-    // Defensive ascending sort — the watermark must advance monotonically,
-    // so even if PCO ever returns records out of order we process the
-    // oldest-first and end up parked at the newest.
-    .sort(
-      (a, b) =>
-        Date.parse(a.attributes.created_at) - Date.parse(b.attributes.created_at),
-    );
+    .filter((p) => Date.parse(p.created_at) > cutoffMs)
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+
+  // Index related resources by person_cms_id for O(1) lookup.
+  const householdsById = new Map<string, CmsHousehold>(
+    households.map((h) => [h.cms_id, h]),
+  );
+  const emailsByPerson = groupBy(emails, (e) => e.person_cms_id);
+  const phonesByPerson = groupBy(phones, (p) => p.person_cms_id);
 
   let peopleUpserted = 0;
   let peopleSkippedFlagged = 0;
@@ -121,54 +98,55 @@ export async function runIntakeMirror(
   let householdsUpserted = 0;
   let latestSeenAt = watermark?.last_seen_at ?? null;
   let latestSeenId = watermark?.last_seen_id ?? null;
+  const writtenHouseholdIds = new Set<string>();
 
   for (const person of candidates) {
-    // Pastoral override gate: if the person already has an active flag,
-    // refresh nothing. The override monitor owns this profile until cleared.
-    const flagged = await hasActivePastoralFlag(db, person.id);
-    if (flagged) {
+    if (await hasActivePastoralFlag(db, person.cms_id)) {
       peopleSkippedFlagged++;
       continue;
     }
 
-    const householdRow = upsertableHousehold(person, included);
-    if (householdRow) {
-      const { error } = await db
-        .from('households')
-        .upsert(householdRow, { onConflict: 'pco_id' });
+    // Upsert the household once per poll (if not already written).
+    if (person.household_id && !writtenHouseholdIds.has(person.household_id)) {
+      const hh = householdsById.get(person.household_id);
+      const row: HouseholdInsert = hh
+        ? cmsHouseholdToInsert(hh)
+        : { pco_id: person.household_id };
+      const { error } = await db.from('households').upsert(row, { onConflict: 'pco_id' });
       if (error) throw new Error(`households upsert failed: ${error.message}`);
+      writtenHouseholdIds.add(person.household_id);
       householdsUpserted++;
     }
 
-    const personRow = buildPersonInsert(person);
+    // Upsert the person.
     {
       const { error } = await db
         .from('people')
-        .upsert(personRow, { onConflict: 'pco_id' });
+        .upsert(cmsPersonToInsert(person), { onConflict: 'pco_id' });
       if (error) throw new Error(`people upsert failed: ${error.message}`);
       peopleUpserted++;
     }
 
-    const emails = collectEmails(person, included);
-    if (emails.length > 0) {
-      const { error } = await db
-        .from('emails')
-        .upsert(emails, { onConflict: 'pco_id' });
+    // Upsert emails for this person.
+    const personEmails = emailsByPerson.get(person.cms_id) ?? [];
+    if (personEmails.length > 0) {
+      const rows: EmailInsert[] = personEmails.map(cmsEmailToInsert);
+      const { error } = await db.from('emails').upsert(rows, { onConflict: 'pco_id' });
       if (error) throw new Error(`emails upsert failed: ${error.message}`);
-      contactsUpserted += emails.length;
+      contactsUpserted += rows.length;
     }
 
-    const phones = collectPhones(person, included);
-    if (phones.length > 0) {
-      const { error } = await db
-        .from('phone_numbers')
-        .upsert(phones, { onConflict: 'pco_id' });
+    // Upsert phones for this person.
+    const personPhones = phonesByPerson.get(person.cms_id) ?? [];
+    if (personPhones.length > 0) {
+      const rows: PhoneInsert[] = personPhones.map(cmsPhoneToInsert);
+      const { error } = await db.from('phone_numbers').upsert(rows, { onConflict: 'pco_id' });
       if (error) throw new Error(`phone_numbers upsert failed: ${error.message}`);
-      contactsUpserted += phones.length;
+      contactsUpserted += rows.length;
     }
 
-    latestSeenAt = person.attributes.created_at;
-    latestSeenId = person.id;
+    latestSeenAt = person.created_at;
+    latestSeenId = person.cms_id;
   }
 
   const pollCompletedAt = now().toISOString();
@@ -214,102 +192,68 @@ async function hasActivePastoralFlag(db: Db, personPcoId: string): Promise<boole
   return data !== null;
 }
 
-function buildPersonInsert(person: PcoPerson): PersonInsert {
-  const attrs = person.attributes;
-  const householdRef = person.relationships?.['households']?.data;
-  const householdId = Array.isArray(householdRef)
-    ? (householdRef[0]?.id ?? null)
-    : (householdRef?.id ?? null);
-
-  // current_stage and stage_entered_at are intentionally omitted: they're
-  // owned by the Stage Transition Agent, not the intake mirror. On INSERT,
-  // the DB default ('guest') applies. On UPDATE-via-upsert, Postgres only
-  // touches columns present in the input, so an existing person at
-  // 'connected' or beyond is not demoted back to 'guest' on re-poll.
+function cmsPersonToInsert(p: CmsPerson): PersonInsert {
+  // current_stage and stage_entered_at are intentionally omitted — they're
+  // owned by the Stage Transition Agent. On INSERT, DB default ('guest')
+  // applies. On UPDATE-via-upsert, Postgres only touches input columns, so
+  // a person already past 'guest' is not demoted.
   return {
-    pco_id: person.id,
-    first_name: attrs.first_name ?? null,
-    last_name: attrs.last_name ?? null,
-    preferred_name: attrs.nickname ?? attrs.given_name ?? null,
-    household_pco_id: householdId,
-    is_child: attrs.child ?? null,
-    birthdate: attrs.birthdate ?? null,
-    membership: attrs.membership ?? null,
-    status: attrs.status ?? null,
-    raw_attributes: attrs as unknown as Json,
-    pco_created_at: attrs.created_at,
-    pco_updated_at: attrs.updated_at ?? null,
+    pco_id: p.cms_id,
+    first_name: p.first_name,
+    last_name: p.last_name,
+    preferred_name: p.preferred_name,
+    household_pco_id: p.household_id,
+    is_child: p.is_child,
+    birthdate: p.birthdate,
+    membership: p.membership,
+    status: p.status,
+    raw_attributes: p.raw as Json,
+    pco_created_at: p.created_at,
+    pco_updated_at: p.updated_at,
     synced_at: new Date().toISOString(),
   };
 }
 
-function upsertableHousehold(
-  person: PcoPerson,
-  included: PcoIncluded[],
-): HouseholdInsert | null {
-  const ref = person.relationships?.['households']?.data;
-  const id = Array.isArray(ref) ? ref[0]?.id : ref?.id;
-  if (!id) return null;
-  const resource = findIncluded(included, 'Household', id);
-  if (!resource) {
-    // Relationship referenced but resource not sideloaded — minimal stub so
-    // the person FK can resolve.
-    return { pco_id: id };
-  }
-  const attrs = resource.attributes;
+function cmsHouseholdToInsert(h: CmsHousehold): HouseholdInsert {
   return {
-    pco_id: id,
-    name: typeof attrs['name'] === 'string' ? attrs['name'] : null,
-    member_count: typeof attrs['member_count'] === 'number' ? attrs['member_count'] : null,
-    primary_contact_pco_id:
-      typeof attrs['primary_contact_id'] === 'string' ? attrs['primary_contact_id'] : null,
-    raw_attributes: attrs as unknown as Json,
+    pco_id: h.cms_id,
+    name: h.name,
+    member_count: h.member_count,
+    primary_contact_pco_id: h.primary_contact_id,
+    raw_attributes: h.raw as Json,
     synced_at: new Date().toISOString(),
   };
 }
 
-function collectEmails(person: PcoPerson, included: PcoIncluded[]): EmailInsert[] {
-  const refs = person.relationships?.['emails']?.data;
-  if (!refs) return [];
-  const ids = Array.isArray(refs) ? refs.map((r) => r.id) : [refs.id];
-  const results: EmailInsert[] = [];
-  for (const id of ids) {
-    const r = findIncluded(included, 'Email', id);
-    if (!r) continue;
-    const a = r.attributes;
-    const address = a['address'];
-    if (typeof address !== 'string') continue;
-    results.push({
-      pco_id: r.id,
-      person_pco_id: person.id,
-      address,
-      location: typeof a['location'] === 'string' ? a['location'] : null,
-      is_primary: a['primary'] === true,
-      blocked: a['blocked'] === true,
-    });
-  }
-  return results;
+function cmsEmailToInsert(e: CmsEmail): EmailInsert {
+  return {
+    pco_id: e.cms_id,
+    person_pco_id: e.person_cms_id,
+    address: e.address,
+    location: e.location,
+    is_primary: e.is_primary,
+    blocked: e.blocked,
+  };
 }
 
-function collectPhones(person: PcoPerson, included: PcoIncluded[]): PhoneInsert[] {
-  const refs = person.relationships?.['phone_numbers']?.data;
-  if (!refs) return [];
-  const ids = Array.isArray(refs) ? refs.map((r) => r.id) : [refs.id];
-  const results: PhoneInsert[] = [];
-  for (const id of ids) {
-    const r = findIncluded(included, 'PhoneNumber', id);
-    if (!r) continue;
-    const a = r.attributes;
-    const number = a['number'];
-    if (typeof number !== 'string') continue;
-    results.push({
-      pco_id: r.id,
-      person_pco_id: person.id,
-      number,
-      location: typeof a['location'] === 'string' ? a['location'] : null,
-      is_primary: a['primary'] === true,
-      carrier: typeof a['carrier'] === 'string' ? a['carrier'] : null,
-    });
+function cmsPhoneToInsert(p: CmsPhone): PhoneInsert {
+  return {
+    pco_id: p.cms_id,
+    person_pco_id: p.person_cms_id,
+    number: p.number,
+    location: p.location,
+    is_primary: p.is_primary,
+    carrier: p.carrier,
+  };
+}
+
+function groupBy<T, K>(items: T[], keyFn: (item: T) => K): Map<K, T[]> {
+  const map = new Map<K, T[]>();
+  for (const item of items) {
+    const key = keyFn(item);
+    const list = map.get(key);
+    if (list) list.push(item);
+    else map.set(key, [item]);
   }
-  return results;
+  return map;
 }

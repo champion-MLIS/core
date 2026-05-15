@@ -1,9 +1,20 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { PcoClient } from '../../src/pco/client.ts';
 import { runSignalsPoll } from '../../src/intake/signals.ts';
 import { classifyForm } from '../../src/intake/signal-classifier.ts';
 import type { Db } from '../../src/db/index.ts';
+import type {
+  CmsAdapter,
+  CmsCheckIn,
+  CmsDonation,
+  CmsEmail,
+  CmsForm,
+  CmsFormSubmission,
+  CmsHousehold,
+  CmsPerson,
+  CmsPhone,
+  CmsServicePlan,
+} from '../../src/cms/index.ts';
 
 // ---------------------------------------------------------------------------
 // In-memory fake Supabase client — extended from the intake mirror test to
@@ -129,7 +140,7 @@ function makeFakeDb(seed: Record<string, Row[]> = {}): {
 }
 
 // ---------------------------------------------------------------------------
-// PCO client stub for forms + submissions
+// Mock CmsAdapter — fixture-driven forms + submissions
 // ---------------------------------------------------------------------------
 
 interface FormFixture {
@@ -144,60 +155,52 @@ interface SubmissionFixture {
   createdAt: string;
 }
 
-function makePcoClient(forms: FormFixture[], submissions: SubmissionFixture[]): PcoClient {
-  return new PcoClient({
-    appId: 'x',
-    secret: 'y',
-    maxRetries: 0,
-    fetchImpl: (async (url: string) => {
-      const u = new URL(url);
-      if (u.pathname === '/people/v2/forms') {
-        return new Response(
-          JSON.stringify({
-            data: forms.map((f) => ({
-              type: 'Form',
-              id: f.id,
-              attributes: {
-                name: f.name,
-                active: true,
-                archived: false,
-                archived_at: null,
-                deleted_at: null,
-                submission_count: submissions.filter((s) => s.formId === f.id).length,
-                created_at: '2026-01-01T00:00:00Z',
-                updated_at: '2026-01-01T00:00:00Z',
-              },
-            })),
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }
-      const m = u.pathname.match(/^\/people\/v2\/forms\/([^/]+)\/form_submissions$/);
-      if (m) {
-        const formId = m[1]!;
-        const matching = submissions.filter((s) => s.formId === formId);
-        return new Response(
-          JSON.stringify({
-            data: matching.map((s) => ({
-              type: 'FormSubmission',
-              id: s.id,
-              attributes: {
-                created_at: s.createdAt,
-                updated_at: s.createdAt,
-                verified: true,
-              },
-              relationships: {
-                person: { data: s.personId ? { type: 'Person', id: s.personId } : null },
-              },
-            })),
-            included: [],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }
-      return new Response('not found', { status: 404 });
-    }) as unknown as typeof fetch,
-  });
+class MockCmsAdapter implements CmsAdapter {
+  readonly vendor = 'pco' as const;
+  constructor(
+    private readonly forms: FormFixture[],
+    private readonly submissions: SubmissionFixture[],
+  ) {}
+
+  async listPeople(): Promise<{
+    people: CmsPerson[];
+    households: CmsHousehold[];
+    emails: CmsEmail[];
+    phones: CmsPhone[];
+  }> {
+    return { people: [], households: [], emails: [], phones: [] };
+  }
+
+  async listForms(): Promise<CmsForm[]> {
+    return this.forms.map((f) => ({
+      cms_id: f.id,
+      name: f.name,
+      active: true,
+      archived: false,
+      submission_count: this.submissions.filter((s) => s.formId === f.id).length,
+      public_url: null,
+    }));
+  }
+
+  async listFormSubmissions(formId: string): Promise<CmsFormSubmission[]> {
+    return this.submissions
+      .filter((s) => s.formId === formId)
+      .map((s) => ({
+        cms_id: s.id,
+        form_cms_id: s.formId,
+        person_cms_id: s.personId,
+        created_at: s.createdAt,
+        field_values: {},
+      }));
+  }
+
+  async listDonations(): Promise<CmsDonation[]> { return []; }
+  async listCheckIns(): Promise<CmsCheckIn[]> { return []; }
+  async getServicePlan(): Promise<CmsServicePlan | null> { return null; }
+}
+
+function makeCms(forms: FormFixture[], submissions: SubmissionFixture[]): MockCmsAdapter {
+  return new MockCmsAdapter(forms, submissions);
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +258,7 @@ describe('runSignalsPoll — happy path', () => {
         { pco_id: '1002', first_name: 'James', current_stage: 'guest' },
       ],
     });
-    const pco = makePcoClient(
+    const cms = makeCms(
       [
         { id: '339647', name: 'New Here' },
         { id: '616018', name: 'Life Groups' }, // not a trigger — should be ignored
@@ -267,7 +270,7 @@ describe('runSignalsPoll — happy path', () => {
       ],
     );
 
-    const r = await runSignalsPoll(fake.db, pco, {
+    const r = await runSignalsPoll(fake.db, cms, {
       now: () => new Date('2026-05-13T18:00:00Z'),
     });
 
@@ -286,14 +289,14 @@ describe('runSignalsPoll — happy path', () => {
 
   it('skips submissions for people not yet in the mirror', async () => {
     const fake = makeFakeDb({ people: [] }); // empty mirror
-    const pco = makePcoClient(
+    const cms = makeCms(
       [{ id: '339647', name: 'New Here' }],
       [
         { id: 'sub-1', formId: '339647', personId: '1001', createdAt: '2026-05-12T14:00:00Z' },
       ],
     );
 
-    const r = await runSignalsPoll(fake.db, pco, {
+    const r = await runSignalsPoll(fake.db, cms, {
       now: () => new Date('2026-05-13T18:00:00Z'),
     });
 
@@ -315,12 +318,12 @@ describe('runSignalsPoll — happy path', () => {
         },
       ],
     });
-    const pco = makePcoClient(
+    const cms = makeCms(
       [{ id: '339647', name: 'New Here' }],
       [{ id: 'sub-1', formId: '339647', personId: '1001', createdAt: '2026-05-12T14:00:00Z' }],
     );
 
-    const r = await runSignalsPoll(fake.db, pco, {
+    const r = await runSignalsPoll(fake.db, cms, {
       now: () => new Date('2026-05-13T18:00:00Z'),
     });
 
@@ -333,12 +336,12 @@ describe('runSignalsPoll — happy path', () => {
     const fake = makeFakeDb({
       people: [{ pco_id: '1001', first_name: 'Maria', current_stage: 'connected' }],
     });
-    const pco = makePcoClient(
+    const cms = makeCms(
       [{ id: '339647', name: 'New Here' }],
       [{ id: 'sub-1', formId: '339647', personId: '1001', createdAt: '2026-05-12T14:00:00Z' }],
     );
 
-    const r = await runSignalsPoll(fake.db, pco, {
+    const r = await runSignalsPoll(fake.db, cms, {
       now: () => new Date('2026-05-13T18:00:00Z'),
     });
 
@@ -357,18 +360,18 @@ describe('runSignalsPoll — idempotency', () => {
     const fake = makeFakeDb({
       people: [{ pco_id: '1001', first_name: 'Maria', current_stage: 'guest' }],
     });
-    const pco = makePcoClient(
+    const cms = makeCms(
       [{ id: '339647', name: 'New Here' }],
       [{ id: 'sub-1', formId: '339647', personId: '1001', createdAt: '2026-05-12T14:00:00Z' }],
     );
 
-    const first = await runSignalsPoll(fake.db, pco, {
+    const first = await runSignalsPoll(fake.db, cms, {
       now: () => new Date('2026-05-13T18:00:00Z'),
     });
     expect(first.signalsRecorded).toBe(1);
     expect(first.followupsEnqueued).toBe(1);
 
-    const second = await runSignalsPoll(fake.db, pco, {
+    const second = await runSignalsPoll(fake.db, cms, {
       now: () => new Date('2026-05-13T18:05:00Z'),
     });
     // Watermark is now at sub-1's timestamp, so the submission is filtered out

@@ -13,7 +13,8 @@
 
 import { loadEnv } from '../config/env.ts';
 import { getDb } from '../db/client.ts';
-import { PcoClient, PcoError } from '../pco/client.ts';
+import { PcoError } from '../pco/client.ts';
+import { getCms } from '../cms/index.ts';
 import { runSignalsPoll, type SignalsPollResult } from '../intake/signals.ts';
 
 interface CliArgs {
@@ -87,12 +88,12 @@ function printHumanSummary(r: SignalsPollResult): void {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const env = loadEnv();
+  loadEnv();
 
   const db = getDb();
-  const pco = new PcoClient({ appId: env.PCO_APP_ID, secret: env.PCO_SECRET });
+  const cms = getCms();
 
-  const result = await runSignalsPoll(db, pco, { pageSize: args.pageSize });
+  const result = await runSignalsPoll(db, cms, { pageSize: args.pageSize });
 
   if (args.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');

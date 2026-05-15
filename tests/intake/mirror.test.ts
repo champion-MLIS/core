@@ -1,23 +1,156 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 
-import { PcoClient } from '../../src/pco/client.ts';
 import { runIntakeMirror } from '../../src/intake/mirror.ts';
+import type {
+  CmsAdapter,
+  CmsCheckIn,
+  CmsDonation,
+  CmsEmail,
+  CmsForm,
+  CmsFormSubmission,
+  CmsHousehold,
+  CmsPerson,
+  CmsPhone,
+  CmsServicePlan,
+} from '../../src/cms/index.ts';
 import type { Db } from '../../src/db/index.ts';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const fixturePath = join(here, '..', 'fixtures', 'pco-people.sample.json');
-const fixture = JSON.parse(readFileSync(fixturePath, 'utf8')) as unknown;
+// ---------------------------------------------------------------------------
+// Mock CmsAdapter — returns fixture-shaped data in the CMS-neutral format
+// ---------------------------------------------------------------------------
+
+class MockCmsAdapter implements CmsAdapter {
+  readonly vendor = 'pco' as const;
+  constructor(
+    private readonly data: {
+      people: CmsPerson[];
+      households: CmsHousehold[];
+      emails: CmsEmail[];
+      phones: CmsPhone[];
+    },
+  ) {}
+
+  async listPeople(): Promise<{
+    people: CmsPerson[];
+    households: CmsHousehold[];
+    emails: CmsEmail[];
+    phones: CmsPhone[];
+  }> {
+    return this.data;
+  }
+  async listForms(): Promise<CmsForm[]> { return []; }
+  async listFormSubmissions(): Promise<CmsFormSubmission[]> { return []; }
+  async listDonations(): Promise<CmsDonation[]> { return []; }
+  async listCheckIns(): Promise<CmsCheckIn[]> { return []; }
+  async getServicePlan(): Promise<CmsServicePlan | null> { return null; }
+}
+
+// Fixture people — three records matching the prior fixture shape, now in
+// CMS-neutral form. Carter household appears twice (James + Lily Carter),
+// Lopez household once (Maria Lopez).
+const FIXTURE_PEOPLE: CmsPerson[] = [
+  {
+    cms_id: '1001',
+    first_name: 'Maria',
+    last_name: 'Lopez',
+    preferred_name: null,
+    is_child: false,
+    birthdate: '1989-04-12',
+    household_id: '7001',
+    membership: null,
+    status: 'active',
+    created_at: '2026-05-12T15:42:11Z',
+    updated_at: '2026-05-12T15:42:11Z',
+    raw: { name: 'Maria Lopez' },
+  },
+  {
+    cms_id: '1002',
+    first_name: 'James',
+    last_name: 'Carter',
+    preferred_name: 'Jim',
+    is_child: false,
+    birthdate: '1975-09-03',
+    household_id: '7002',
+    membership: 'guest',
+    status: 'active',
+    created_at: '2026-05-12T14:10:00Z',
+    updated_at: '2026-05-12T14:10:00Z',
+    raw: { name: 'James Carter' },
+  },
+  {
+    cms_id: '1003',
+    first_name: 'Lily',
+    last_name: 'Carter',
+    preferred_name: null,
+    is_child: true,
+    birthdate: '2017-02-20',
+    household_id: '7002',
+    membership: null,
+    status: 'active',
+    created_at: '2026-05-12T14:11:15Z',
+    updated_at: '2026-05-12T14:11:15Z',
+    raw: { name: 'Lily Carter' },
+  },
+];
+
+const FIXTURE_HOUSEHOLDS: CmsHousehold[] = [
+  {
+    cms_id: '7001',
+    name: 'Lopez',
+    member_count: 1,
+    primary_contact_id: '1001',
+    raw: {},
+  },
+  {
+    cms_id: '7002',
+    name: 'Carter',
+    member_count: 2,
+    primary_contact_id: '1002',
+    raw: {},
+  },
+];
+
+const FIXTURE_EMAILS: CmsEmail[] = [
+  {
+    cms_id: '9001',
+    person_cms_id: '1001',
+    address: 'maria.lopez@example.com',
+    location: 'Home',
+    is_primary: true,
+    blocked: false,
+  },
+  {
+    cms_id: '9002',
+    person_cms_id: '1002',
+    address: 'jim.carter@example.com',
+    location: 'Home',
+    is_primary: true,
+    blocked: false,
+  },
+];
+
+const FIXTURE_PHONES: CmsPhone[] = [
+  {
+    cms_id: '8001',
+    person_cms_id: '1001',
+    number: '+1-928-555-0142',
+    location: 'Mobile',
+    is_primary: true,
+    carrier: null,
+  },
+];
+
+function makeFixtureCms(): MockCmsAdapter {
+  return new MockCmsAdapter({
+    people: FIXTURE_PEOPLE,
+    households: FIXTURE_HOUSEHOLDS,
+    emails: FIXTURE_EMAILS,
+    phones: FIXTURE_PHONES,
+  });
+}
 
 // ---------------------------------------------------------------------------
-// In-memory fake Supabase client
-//
-// Implements just enough of the @supabase/supabase-js builder surface to
-// drive runIntakeMirror end-to-end: from().select().eq().is().limit().
-// maybeSingle() and from().upsert(rows, { onConflict }). Bring-up cost is
-// worth it — we get real behavioral assertions instead of mocking each call.
+// In-memory fake Supabase client (same as before)
 // ---------------------------------------------------------------------------
 
 type Row = Record<string, unknown>;
@@ -82,55 +215,42 @@ function makeFakeDb(seed: Record<string, Row[]> = {}): {
   return { db: { from } as unknown as Db, tables };
 }
 
-function makePcoClient(): PcoClient {
-  return new PcoClient({
-    appId: 'x',
-    secret: 'y',
-    maxRetries: 0,
-    fetchImpl: (async () =>
-      new Response(JSON.stringify(fixture), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })) as unknown as typeof fetch,
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe('runIntakeMirror — cold start', () => {
   let fake: ReturnType<typeof makeFakeDb>;
-  let pco: PcoClient;
+  let cms: MockCmsAdapter;
 
   beforeEach(() => {
     fake = makeFakeDb();
-    pco = makePcoClient();
+    cms = makeFixtureCms();
   });
 
-  it('mirrors people, households, emails, and phones from PCO into Supabase', async () => {
-    // Pin "now" so the 90-day cold-start window is deterministic.
-    const result = await runIntakeMirror(fake.db, pco, {
+  it('mirrors people, households, emails, and phones from the CMS into Supabase', async () => {
+    const result = await runIntakeMirror(fake.db, cms, {
       now: () => new Date('2026-05-13T18:00:00Z'),
     });
 
     expect(result.recordsExamined).toBe(3);
     expect(result.peopleUpserted).toBe(3);
-    expect(result.householdsUpserted).toBe(3);
-    expect(result.contactsUpserted).toBe(3); // 2 emails + 1 phone in the fixture
+    // Carter household appears twice in people, but only upserted ONCE per poll.
+    expect(result.householdsUpserted).toBe(2);
+    expect(result.contactsUpserted).toBe(3); // 2 emails + 1 phone
     expect(result.peopleSkippedFlagged).toBe(0);
     expect(result.watermarkBefore).toBeNull();
     expect(result.watermarkAfter).toBe('2026-05-12T15:42:11Z');
 
     expect(fake.tables['people']).toHaveLength(3);
-    expect(fake.tables['households']).toHaveLength(2); // Carter household appears twice but dedupes
+    expect(fake.tables['households']).toHaveLength(2);
     expect(fake.tables['emails']).toHaveLength(2);
     expect(fake.tables['phone_numbers']).toHaveLength(1);
     expect(fake.tables['poll_watermarks']).toHaveLength(1);
   });
 
   it('persists the correct person fields (names, household link, child flag)', async () => {
-    await runIntakeMirror(fake.db, pco, {
+    await runIntakeMirror(fake.db, cms, {
       now: () => new Date('2026-05-13T18:00:00Z'),
     });
 
@@ -142,9 +262,6 @@ describe('runIntakeMirror — cold start', () => {
       household_pco_id: '7001',
       is_child: false,
     });
-    // current_stage and stage_entered_at are intentionally not in the payload —
-    // they're owned by the Stage Transition Agent and the DB default applies on
-    // INSERT. Asserting they're absent guards against accidental demotion.
     expect(maria).not.toHaveProperty('current_stage');
     expect(maria).not.toHaveProperty('stage_entered_at');
 
@@ -160,12 +277,10 @@ describe('runIntakeMirror — cold start', () => {
 
 describe('runIntakeMirror — warm start (watermark in place)', () => {
   it('only processes records newer than the watermark', async () => {
-    // Watermark just before the most recent fixture record (Maria, 15:42:11).
-    // James (14:10:00) and Lily (14:11:15) are older and should be skipped.
     const fake = makeFakeDb({
       poll_watermarks: [
         {
-          source: 'pco',
+          source: 'cms',
           resource: 'people',
           last_seen_at: '2026-05-12T15:00:00Z',
           last_seen_id: 'prev',
@@ -175,22 +290,22 @@ describe('runIntakeMirror — warm start (watermark in place)', () => {
         },
       ],
     });
-    const pco = makePcoClient();
+    const cms = makeFixtureCms();
 
-    const result = await runIntakeMirror(fake.db, pco, {
+    const result = await runIntakeMirror(fake.db, cms, {
       now: () => new Date('2026-05-13T18:00:00Z'),
     });
 
-    expect(result.peopleUpserted).toBe(1); // Just Maria
+    expect(result.peopleUpserted).toBe(1); // Just Maria (15:42)
     expect(fake.tables['people']).toHaveLength(1);
     expect((fake.tables['people']![0] as { pco_id: string }).pco_id).toBe('1001');
   });
 
-  it('does nothing when the watermark is newer than every record (idempotent re-run)', async () => {
+  it('does nothing when the watermark is newer than every record', async () => {
     const fake = makeFakeDb({
       poll_watermarks: [
         {
-          source: 'pco',
+          source: 'cms',
           resource: 'people',
           last_seen_at: '2026-05-13T00:00:00Z',
           last_seen_id: 'newer',
@@ -200,9 +315,9 @@ describe('runIntakeMirror — warm start (watermark in place)', () => {
         },
       ],
     });
-    const pco = makePcoClient();
+    const cms = makeFixtureCms();
 
-    const result = await runIntakeMirror(fake.db, pco, {
+    const result = await runIntakeMirror(fake.db, cms, {
       now: () => new Date('2026-05-13T18:00:00Z'),
     });
 
@@ -229,7 +344,7 @@ describe('runIntakeMirror — pastoral override', () => {
         },
         {
           id: 'flag-2',
-          person_pco_id: '1002', // James — but resolved, so should NOT be skipped
+          person_pco_id: '1002', // James — resolved, should NOT be skipped
           reason: 'prayer',
           notes: null,
           assigned_to: null,
@@ -239,14 +354,14 @@ describe('runIntakeMirror — pastoral override', () => {
         },
       ],
     });
-    const pco = makePcoClient();
+    const cms = makeFixtureCms();
 
-    const result = await runIntakeMirror(fake.db, pco, {
+    const result = await runIntakeMirror(fake.db, cms, {
       now: () => new Date('2026-05-13T18:00:00Z'),
     });
 
     expect(result.peopleSkippedFlagged).toBe(1);
-    expect(result.peopleUpserted).toBe(2); // James and Lily — Maria is skipped
+    expect(result.peopleUpserted).toBe(2); // James and Lily; Maria skipped
     expect(fake.tables['people']!.find((p) => p.pco_id === '1001')).toBeUndefined();
     expect(fake.tables['people']!.find((p) => p.pco_id === '1002')).toBeDefined();
   });

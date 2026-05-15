@@ -12,7 +12,8 @@
 
 import { loadEnv } from '../config/env.ts';
 import { getDb } from '../db/client.ts';
-import { PcoClient, PcoError } from '../pco/client.ts';
+import { PcoError } from '../pco/client.ts';
+import { getCms } from '../cms/index.ts';
 import { runIntakeMirror, type MirrorResult } from '../intake/mirror.ts';
 
 interface CliArgs {
@@ -80,10 +81,9 @@ async function main(): Promise<void> {
   loadEnv();
 
   const db = getDb();
-  const env = loadEnv();
-  const pco = new PcoClient({ appId: env.PCO_APP_ID, secret: env.PCO_SECRET });
+  const cms = getCms();
 
-  const result = await runIntakeMirror(db, pco, { pageSize: args.pageSize });
+  const result = await runIntakeMirror(db, cms, { pageSize: args.pageSize });
 
   if (args.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');

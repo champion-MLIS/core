@@ -1,35 +1,36 @@
 /**
  * Signal poller — Step 3 of the Guest Follow-Up workflow.
  *
- * For each PCO form that classifies as a trigger signal (connect_card or
+ * For each CMS form that classifies as a trigger signal (connect_card or
  * prayer_request):
  *   1. Read the watermark for that form
- *   2. Pull form submissions newer than the watermark
+ *   2. Pull form submissions newer than the watermark via the CmsAdapter
  *   3. For each submission:
- *        a. Resolve the person_id from the submission relationship
- *        b. Skip if person isn't yet in our mirror (intake will catch them next poll)
- *        c. Skip if person has an active pastoral_flag (override stop)
- *        d. Insert (or look up) an engagement_signal row
- *        e. If person is currently at 'guest' stage, enqueue a followup
+ *        a. Skip if person isn't yet in our mirror (intake will catch them next poll)
+ *        b. Skip if person has an active pastoral_flag (override stop)
+ *        c. Insert (or look up) an engagement_signal row
+ *        d. If person is currently at 'guest' stage, enqueue a followup
+ *        e. If signal kind is "enrolling" (connect_card today), enroll the
+ *           person in a 21-day journey
  *   4. Advance the watermark
+ *
+ * Vendor-neutral: takes a CmsAdapter. Future CMSes plug in without changing
+ * this module.
  *
  * Idempotency:
  *   - engagement_signals: UNIQUE (person_pco_id, kind, source_pco_id)
  *   - followup_queue:     UNIQUE (person_pco_id, workflow, trigger_signal_id)
+ *   - guest_journeys:     partial UNIQUE (person, version) WHERE active
  * Re-running the poller after a partial run is safe and produces zero net writes.
- *
- * Future work (Step 3.1+): polling PCO Giving for first-time gifts and PCO
- * Check-Ins for child check-ins. Same shape as this module, different sources.
  */
 
-import type { PcoClient } from '../pco/client.ts';
-import { listForms, listFormSubmissions, submissionPersonId } from '../pco/forms.ts';
+import type { CmsAdapter } from '../cms/index.ts';
 import type { Db } from '../db/index.ts';
 import { getWatermark, setWatermark } from './watermarks.ts';
 import { classifyForm, type Classification } from './signal-classifier.ts';
 import { enrollGuest, type EnrollmentKind } from '../journey/index.ts';
 
-const SOURCE = 'pco';
+const SOURCE = 'cms';
 const WORKFLOW = 'guest-follow-up';
 
 type SignalKind = 'connect_card' | 'prayer_request';
@@ -71,33 +72,29 @@ export interface SignalsPollResult {
 }
 
 export interface SignalsPollOptions {
-  /** Per-form page size. PCO max 100. */
   pageSize?: number;
-  /** Cold-start lookback window. Default 90 days. */
   coldStartLookback?: { days: number };
   now?: () => Date;
 }
 
 export async function runSignalsPoll(
   db: Db,
-  pco: PcoClient,
+  cms: CmsAdapter,
   opts: SignalsPollOptions = {},
 ): Promise<SignalsPollResult> {
-  const { forms } = await listForms(pco);
+  const forms = await cms.listForms();
 
-  const targets: Array<{ form: (typeof forms)[number]; kind: SignalKind }> = [];
+  const targets: Array<{ formId: string; formName: string; kind: SignalKind }> = [];
   for (const f of forms) {
-    const name = typeof f.attributes.name === 'string' ? f.attributes.name : '';
-    const k = classifyForm(f.id, name);
+    const k = classifyForm(f.cms_id, f.name);
     if (k === 'connect_card' || k === 'prayer_request') {
-      targets.push({ form: f, kind: k });
+      targets.push({ formId: f.cms_id, formName: f.name, kind: k });
     }
   }
 
   const byForm: PerFormResult[] = [];
-  for (const { form, kind } of targets) {
-    const name = typeof form.attributes.name === 'string' ? form.attributes.name : '(unnamed)';
-    const result = await pollOneForm(db, pco, form.id, name, kind, opts);
+  for (const t of targets) {
+    const result = await pollOneForm(db, cms, t.formId, t.formName, t.kind, opts);
     byForm.push(result);
   }
 
@@ -120,7 +117,7 @@ export async function runSignalsPoll(
 
 async function pollOneForm(
   db: Db,
-  pco: PcoClient,
+  cms: CmsAdapter,
   formId: string,
   formName: string,
   kind: SignalKind,
@@ -138,20 +135,16 @@ async function pollOneForm(
     : now().getTime() - (opts.coldStartLookback?.days ?? 90) * 24 * 60 * 60 * 1000;
   const createdSince = new Date(cutoffMs).toISOString();
 
-  const { submissions } = await listFormSubmissions(pco, formId, {
-    perPage: opts.pageSize ?? 50,
+  const submissions = await cms.listFormSubmissions(formId, {
+    per_page: opts.pageSize ?? 50,
     order: '-created_at',
-    include: ['person'],
-    createdSince,
+    created_since: createdSince,
   });
 
   // Process oldest-first so the watermark advances monotonically.
   const candidates = submissions
-    .filter((s) => Date.parse(s.attributes.created_at) > cutoffMs)
-    .sort(
-      (a, b) =>
-        Date.parse(a.attributes.created_at) - Date.parse(b.attributes.created_at),
-    );
+    .filter((s) => Date.parse(s.created_at) > cutoffMs)
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
 
   let signalsRecorded = 0;
   let signalsAlreadyKnown = 0;
@@ -165,33 +158,30 @@ async function pollOneForm(
   let latestSeenId = watermark?.last_seen_id ?? null;
 
   for (const sub of candidates) {
-    const personPcoId = submissionPersonId(sub);
+    const personPcoId = sub.person_cms_id;
     if (!personPcoId) {
-      // Submission with no person link — nothing actionable. Skip without
-      // advancing the watermark so a later sync (when the person is attached)
-      // can revisit. PCO occasionally creates the submission first.
+      // Submission with no person link — nothing actionable. Don't advance
+      // watermark so a later sync (when the person is attached) can revisit.
       continue;
     }
 
     if (!(await personExists(db, personPcoId))) {
       peopleSkippedNotMirrored++;
-      // Don't advance watermark for this submission — the next intake:poll
-      // will add the person, and the next signal poll will pick it up.
       continue;
     }
 
     if (await hasActivePastoralFlag(db, personPcoId)) {
       peopleSkippedFlagged++;
-      latestSeenAt = sub.attributes.created_at;
-      latestSeenId = sub.id;
+      latestSeenAt = sub.created_at;
+      latestSeenId = sub.cms_id;
       continue;
     }
 
     const signal = await ensureSignal(db, {
       personPcoId,
       kind,
-      occurredAt: sub.attributes.created_at,
-      sourcePcoId: sub.id,
+      occurredAt: sub.created_at,
+      sourcePcoId: sub.cms_id,
     });
     if (signal.isNew) signalsRecorded++;
     else signalsAlreadyKnown++;
@@ -203,8 +193,7 @@ async function pollOneForm(
     if (enq === 'enqueued') followupsEnqueued++;
     else if (enq === 'not-guest') peopleSkippedNotGuest++;
 
-    // Also enroll into the 21-day journey if this signal kind drives one.
-    // Prayer requests don't auto-enroll — pastoral staff decide.
+    // 21-day journey enrollment (only for connect_card today).
     if (ENROLLING_SIGNAL_KINDS.has(kind)) {
       const enrollResult = await enrollGuest(db, {
         personPcoId,
@@ -214,12 +203,10 @@ async function pollOneForm(
       });
       if (enrollResult.outcome === 'enrolled') journeysEnrolled++;
       else if (enrollResult.outcome === 'already_active') journeysAlreadyActive++;
-      // blocked_pastoral_flag / person_not_mirrored shouldn't happen here
-      // because we already gated on those above; if they do, count is 0.
     }
 
-    latestSeenAt = sub.attributes.created_at;
-    latestSeenId = sub.id;
+    latestSeenAt = sub.created_at;
+    latestSeenId = sub.cms_id;
   }
 
   if (latestSeenAt && latestSeenAt !== watermark?.last_seen_at) {
@@ -253,7 +240,7 @@ async function pollOneForm(
 }
 
 // ---------------------------------------------------------------------------
-// DB helpers
+// DB helpers (unchanged from prior version)
 // ---------------------------------------------------------------------------
 
 async function personExists(db: Db, personPcoId: string): Promise<boolean> {
@@ -287,7 +274,6 @@ async function ensureSignal(
     sourcePcoId: string;
   },
 ): Promise<{ id: string; isNew: boolean }> {
-  // Look first — UNIQUE(person_pco_id, kind, source_pco_id) makes this reliable.
   const { data: existing, error: lookupErr } = await db
     .from('engagement_signals')
     .select('id')
