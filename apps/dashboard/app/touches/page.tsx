@@ -1,8 +1,13 @@
 import Link from 'next/link';
 import { createServerClient, createServiceClient } from '../../lib/supabase/server';
 import { signOutAction } from '../actions';
-import { completeTouchAction, snoozeTouchAction } from './actions';
+import {
+  completeTouchAction,
+  snoozeTouchAction,
+  uncompleteTouchAction,
+} from './actions';
 import { SubmitButton } from './_components/SubmitButton';
+import { CompleteCheckbox } from './_components/CompleteCheckbox';
 import { formatDateTime, relativeDay } from '../../lib/format';
 import type { Database } from '@core/db/types.generated';
 
@@ -26,6 +31,9 @@ const TOUCH_KIND_LABELS: Record<string, string> = {
   event_invite: 'Event invite',
 };
 
+// Recently-completed window: 24 hours.
+const COMPLETED_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 export default async function TouchesPage() {
   const auth = await createServerClient();
   const {
@@ -34,35 +42,46 @@ export default async function TouchesPage() {
   if (!user) return null;
 
   const db = createServiceClient();
+  const completedSince = new Date(Date.now() - COMPLETED_WINDOW_MS).toISOString();
 
-  // Pull every open touch, with the guest's name attached.
-  const { data: touches, error } = await db
-    .from('touches')
-    .select(
-      `
-      id,
-      touch_number,
-      kind,
-      owner_role,
-      is_recovery,
-      scheduled_for,
-      due_at,
-      status,
-      payload,
-      journey_id,
-      guest_journeys!inner (
-        id,
-        person_pco_id,
-        people!inner ( pco_id, first_name, last_name, preferred_name )
+  const [openRes, doneRes] = await Promise.all([
+    db
+      .from('touches')
+      .select(
+        `
+        id, touch_number, kind, owner_role, is_recovery,
+        scheduled_for, due_at, status, payload, journey_id, completed_at, completed_by,
+        guest_journeys!inner (
+          id, person_pco_id,
+          people!inner ( pco_id, first_name, last_name, preferred_name )
+        )
+      `,
       )
-    `,
-    )
-    .in('status', OPEN_STATUSES)
-    .order('scheduled_for', { ascending: true });
+      .in('status', OPEN_STATUSES)
+      .order('scheduled_for', { ascending: true }),
+    db
+      .from('touches')
+      .select(
+        `
+        id, touch_number, kind, owner_role, is_recovery,
+        scheduled_for, due_at, status, payload, journey_id, completed_at, completed_by,
+        guest_journeys!inner (
+          id, person_pco_id,
+          people!inner ( pco_id, first_name, last_name, preferred_name )
+        )
+      `,
+      )
+      .eq('status', 'completed')
+      .gte('completed_at', completedSince)
+      .order('completed_at', { ascending: false })
+      .limit(20),
+  ]);
 
-  if (error) throw new Error(`worklist query failed: ${error.message}`);
+  if (openRes.error) throw new Error(`open worklist query failed: ${openRes.error.message}`);
+  if (doneRes.error) throw new Error(`recently-completed query failed: ${doneRes.error.message}`);
 
-  type Row = NonNullable<typeof touches>[number];
+  const openTouches = (openRes.data ?? []) as TouchRowData[];
+  const doneTouches = (doneRes.data ?? []) as TouchRowData[];
 
   return (
     <main className="min-h-dvh">
@@ -91,13 +110,14 @@ export default async function TouchesPage() {
       </header>
 
       <section className="mx-auto max-w-6xl px-6 py-8">
-        {(touches?.length ?? 0) === 0 ? (
+        {openTouches.length === 0 ? (
           <EmptyState />
         ) : (
           <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
             <table className="w-full text-sm">
               <thead className="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
                 <tr>
+                  <th className="w-12 px-4 py-3 font-medium">Done</th>
                   <th className="px-4 py-3 font-medium">Guest</th>
                   <th className="px-4 py-3 font-medium">Touch</th>
                   <th className="px-4 py-3 font-medium">Owner</th>
@@ -107,11 +127,28 @@ export default async function TouchesPage() {
                 </tr>
               </thead>
               <tbody>
-                {(touches ?? []).map((t) => (
-                  <TouchRow key={t.id} touch={t as Row} />
+                {openTouches.map((t) => (
+                  <OpenTouchRow key={t.id} touch={t} />
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {doneTouches.length > 0 && (
+          <div className="mt-10">
+            <h2 className="mb-3 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+              Recently completed (last 24 hours)
+            </h2>
+            <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+              <table className="w-full text-sm">
+                <tbody>
+                  {doneTouches.map((t) => (
+                    <CompletedTouchRow key={t.id} touch={t} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
@@ -124,20 +161,22 @@ export default async function TouchesPage() {
   );
 }
 
-function TouchRow({ touch }: { touch: TouchRowData }) {
-  const person = touch.guest_journeys.people;
-  const guestName =
-    [person.first_name, person.last_name].filter(Boolean).join(' ').trim() ||
-    person.preferred_name ||
-    `(${person.pco_id})`;
+function OpenTouchRow({ touch }: { touch: TouchRowData }) {
+  const guestName = guestNameOf(touch);
   const label =
     (touch.payload as { label?: string } | null)?.label ?? `Touch ${touch.touch_number}`;
 
   return (
     <tr className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
+      <td className="px-4 py-3 align-middle">
+        <form action={completeTouchAction}>
+          <input type="hidden" name="touch_id" value={touch.id} />
+          <CompleteCheckbox ariaLabel={`Mark ${label} for ${guestName} as done`} />
+        </form>
+      </td>
       <td className="px-4 py-3">
         <div className="font-medium text-zinc-900">{guestName}</div>
-        <div className="text-xs text-zinc-500">PCO {person.pco_id}</div>
+        <div className="text-xs text-zinc-500">PCO {touch.guest_journeys.people.pco_id}</div>
       </td>
       <td className="px-4 py-3">
         <div className="font-medium text-zinc-900">{label}</div>
@@ -157,17 +196,58 @@ function TouchRow({ touch }: { touch: TouchRowData }) {
         <StatusBadge status={touch.status} />
       </td>
       <td className="px-4 py-3">
-        <div className="flex items-center justify-end gap-2">
-          <form action={completeTouchAction}>
-            <input type="hidden" name="touch_id" value={touch.id} />
-            <SubmitButton pendingLabel="Marking…" tone="primary">
-              Mark done
-            </SubmitButton>
-          </form>
+        <div className="flex items-center justify-end">
           <form action={snoozeTouchAction}>
             <input type="hidden" name="touch_id" value={touch.id} />
             <SubmitButton pendingLabel="Snoozing…" tone="secondary">
               Snooze 24h
+            </SubmitButton>
+          </form>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function CompletedTouchRow({ touch }: { touch: TouchRowData }) {
+  const guestName = guestNameOf(touch);
+  const label =
+    (touch.payload as { label?: string } | null)?.label ?? `Touch ${touch.touch_number}`;
+  const completedAt = touch.completed_at ?? new Date().toISOString();
+
+  return (
+    <tr className="border-b border-zinc-100 last:border-0 text-zinc-500">
+      <td className="w-12 px-4 py-3 align-middle">
+        <span className="grid size-6 place-items-center rounded-md bg-zinc-900">
+          <svg className="size-4 text-white" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M5 10l3.5 3.5L15 7"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      </td>
+      <td className="px-4 py-3">
+        <div className="font-medium line-through decoration-zinc-400">{guestName}</div>
+        <div className="text-xs">PCO {touch.guest_journeys.people.pco_id}</div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="line-through decoration-zinc-400">{label}</div>
+        <div className="text-xs">{TOUCH_KIND_LABELS[touch.kind] ?? touch.kind}</div>
+      </td>
+      <td className="px-4 py-3 text-xs" colSpan={2}>
+        Completed {relativeDay(completedAt)} · {formatDateTime(completedAt)}
+        {touch.completed_by ? ` · by ${touch.completed_by}` : ''}
+      </td>
+      <td className="px-4 py-3" colSpan={2}>
+        <div className="flex items-center justify-end">
+          <form action={uncompleteTouchAction}>
+            <input type="hidden" name="touch_id" value={touch.id} />
+            <SubmitButton pendingLabel="Undoing…" tone="secondary">
+              Undo
             </SubmitButton>
           </form>
         </div>
@@ -208,8 +288,17 @@ function EmptyState() {
   );
 }
 
-// Type for the joined query result. PostgREST infers this at runtime; we
-// declare the shape so TouchRow stays strictly typed.
+function guestNameOf(touch: TouchRowData): string {
+  const p = touch.guest_journeys.people;
+  return (
+    [p.first_name, p.last_name].filter(Boolean).join(' ').trim() ||
+    p.preferred_name ||
+    `(${p.pco_id})`
+  );
+}
+
+// Joined-query shape. PostgREST resolves this at runtime; we declare it for
+// strict typing on the row components.
 type TouchRowData = {
   id: string;
   touch_number: number;
@@ -221,6 +310,8 @@ type TouchRowData = {
   status: string;
   payload: unknown;
   journey_id: string;
+  completed_at: string | null;
+  completed_by: string | null;
   guest_journeys: {
     id: string;
     person_pco_id: string;

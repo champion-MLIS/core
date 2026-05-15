@@ -75,3 +75,44 @@ export async function snoozeTouchAction(formData: FormData): Promise<void> {
 
   revalidatePath('/touches');
 }
+
+/**
+ * Undo a "mark done." Flips the touch back to 'pending' and clears the
+ * completion metadata. If this was the last completed touch on a journey
+ * that had already flipped to 'completed', the journey reverts to 'active'.
+ */
+export async function uncompleteTouchAction(formData: FormData): Promise<void> {
+  const touchId = String(formData.get('touch_id') ?? '');
+  if (!touchId) throw new Error('touch_id required');
+  await requireAuthedEmail();
+  const db = createServiceClient();
+
+  const { data: touch, error: tErr } = await db
+    .from('touches')
+    .update({
+      status: 'pending',
+      completed_at: null,
+      completed_by: null,
+    })
+    .eq('id', touchId)
+    .select('journey_id')
+    .single();
+  if (tErr) throw new Error(`touch revert failed: ${tErr.message}`);
+
+  // If the journey had flipped to 'completed', revert it to 'active'.
+  const { data: journey, error: jErr } = await db
+    .from('guest_journeys')
+    .select('status')
+    .eq('id', touch.journey_id)
+    .single();
+  if (jErr) throw new Error(`journey lookup failed: ${jErr.message}`);
+  if (journey.status === 'completed') {
+    await db
+      .from('guest_journeys')
+      .update({ status: 'active', completed_at: null })
+      .eq('id', touch.journey_id);
+  }
+
+  revalidatePath('/touches');
+  revalidatePath('/');
+}
