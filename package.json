@@ -13,6 +13,7 @@
     "intake:poll": "tsx src/cli/intake-poll.ts",
     "intake:signals": "tsx src/cli/intake-signals.ts",
     "agent:draft": "tsx src/cli/agent-draft.ts",
+    "touches:status": "tsx src/cli/touches-status.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

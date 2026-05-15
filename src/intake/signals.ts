@@ -27,11 +27,19 @@ import { listForms, listFormSubmissions, submissionPersonId } from '../pco/forms
 import type { Db } from '../db/index.ts';
 import { getWatermark, setWatermark } from './watermarks.ts';
 import { classifyForm, type Classification } from './signal-classifier.ts';
+import { enrollGuest, type EnrollmentKind } from '../journey/index.ts';
 
 const SOURCE = 'pco';
 const WORKFLOW = 'guest-follow-up';
 
 type SignalKind = 'connect_card' | 'prayer_request';
+
+/**
+ * Which signal kinds enroll a person into the 21-day journey when fired.
+ * prayer_request does NOT auto-enroll — those flow to pastoral staff
+ * directly and the journey decision is made by a human.
+ */
+const ENROLLING_SIGNAL_KINDS = new Set<SignalKind>(['connect_card']);
 
 export interface PerFormResult {
   formId: string;
@@ -41,6 +49,8 @@ export interface PerFormResult {
   signalsRecorded: number;
   signalsAlreadyKnown: number;
   followupsEnqueued: number;
+  journeysEnrolled: number;
+  journeysAlreadyActive: number;
   peopleSkippedNotMirrored: number;
   peopleSkippedFlagged: number;
   peopleSkippedNotGuest: number;
@@ -54,6 +64,7 @@ export interface SignalsPollResult {
   submissionsExamined: number;
   signalsRecorded: number;
   followupsEnqueued: number;
+  journeysEnrolled: number;
   peopleSkippedNotMirrored: number;
   peopleSkippedFlagged: number;
   byForm: PerFormResult[];
@@ -96,6 +107,7 @@ export async function runSignalsPoll(
     submissionsExamined: byForm.reduce((a, r) => a + r.submissionsExamined, 0),
     signalsRecorded: byForm.reduce((a, r) => a + r.signalsRecorded, 0),
     followupsEnqueued: byForm.reduce((a, r) => a + r.followupsEnqueued, 0),
+    journeysEnrolled: byForm.reduce((a, r) => a + r.journeysEnrolled, 0),
     peopleSkippedNotMirrored: byForm.reduce((a, r) => a + r.peopleSkippedNotMirrored, 0),
     peopleSkippedFlagged: byForm.reduce((a, r) => a + r.peopleSkippedFlagged, 0),
     byForm,
@@ -144,6 +156,8 @@ async function pollOneForm(
   let signalsRecorded = 0;
   let signalsAlreadyKnown = 0;
   let followupsEnqueued = 0;
+  let journeysEnrolled = 0;
+  let journeysAlreadyActive = 0;
   let peopleSkippedNotMirrored = 0;
   let peopleSkippedFlagged = 0;
   let peopleSkippedNotGuest = 0;
@@ -189,6 +203,21 @@ async function pollOneForm(
     if (enq === 'enqueued') followupsEnqueued++;
     else if (enq === 'not-guest') peopleSkippedNotGuest++;
 
+    // Also enroll into the 21-day journey if this signal kind drives one.
+    // Prayer requests don't auto-enroll — pastoral staff decide.
+    if (ENROLLING_SIGNAL_KINDS.has(kind)) {
+      const enrollResult = await enrollGuest(db, {
+        personPcoId,
+        signalId: signal.id,
+        enrollmentKind: kind as EnrollmentKind,
+        now: opts.now ?? (() => new Date()),
+      });
+      if (enrollResult.outcome === 'enrolled') journeysEnrolled++;
+      else if (enrollResult.outcome === 'already_active') journeysAlreadyActive++;
+      // blocked_pastoral_flag / person_not_mirrored shouldn't happen here
+      // because we already gated on those above; if they do, count is 0.
+    }
+
     latestSeenAt = sub.attributes.created_at;
     latestSeenId = sub.id;
   }
@@ -213,6 +242,8 @@ async function pollOneForm(
     signalsRecorded,
     signalsAlreadyKnown,
     followupsEnqueued,
+    journeysEnrolled,
+    journeysAlreadyActive,
     peopleSkippedNotMirrored,
     peopleSkippedFlagged,
     peopleSkippedNotGuest,

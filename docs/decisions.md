@@ -75,3 +75,51 @@ This narrowly violates the credential hygiene rule in the README — but only in
 - [ ] Create a Champion-owned Supabase account (church email, password in 1Password).
 - [ ] Transfer the `champion-mlis` project to that org.
 - [ ] Update this ADR's status to "Migrated" with the date.
+
+---
+
+## ADR-003 — In-house dashboard over CMS-native task tools (Church Reimagined transferability)
+
+**Date:** 2026-05-15
+**Status:** Accepted — Phase A backend committed; Phase B dashboard scheduled
+
+### Context
+
+The 21-day Guest Follow-Up workflow needs a human-facing surface — a place where Connections volunteers see their assigned touches, where Becky sees the four tracking metrics, where Pastor Stephen sees the state of the church.
+
+Two candidate architectures:
+
+1. **PCO Workflows (bolt-on).** PCO has a Workflows product that handles assigned tasks, completion tracking, and reporting. Champion has it on their account (probed 2026-05-15 — two empty workflows already exist). Total integration cost: ~1 day.
+
+2. **In-house MLIS dashboard.** Build a purpose-built web app on top of MLIS's own data, with a thin CMS adapter layer reading from PCO (or whatever CMS the church uses). Total cost: ~1–2 weeks.
+
+### Decision
+
+**Build the in-house dashboard.** Skip PCO Workflows entirely.
+
+### Why
+
+Three reasons, in order of weight:
+
+1. **Church Reimagined transferability is the whole point.** If MLIS is wedded to PCO's UI, it's a PCO add-on, not a transferable church operating system. The next church will use Breeze, CCB, Rock RMS, Subsplash, or their own. Each has different (or no) workflow features. A bolt-on locks us to one vendor.
+
+2. **The data we need to surface is MLIS-specific.** PCO Workflows show "task assigned to Becky." They cannot natively show: the voice-checked AI draft with pass/fail per criterion; which engagement signal triggered this touch; recovery-touch status with reasoning; return-rate-by-touch analytics; cross-touch context. These are core MLIS concerns.
+
+3. **UX can be radically better.** A volunteer on Sunday at 2 PM should open one screen on their phone and see "your three guests today, here's what to say, tap when done." Purpose-built beats general-purpose by an order of magnitude for the high-frequency tasks.
+
+### Trade-off accepted
+
+PCO Workflows would get Champion live in ~1 day. The in-house dashboard takes ~1-2 weeks. We trade 1-2 weeks of build time for a transferable architecture and a substantially better UX.
+
+If Champion were the only church, this trade-off would be questionable. Because Church Reimagined is a stated goal, building the bolt-on now means building it twice.
+
+### What this means for builders
+
+- **Today (Phase A, this commit):** backend schedule + state machine + enrollment + return detection. Data lives in MLIS Supabase. No CMS-side workflow created.
+- **CMS adapter layer (Phase A.2, near-term):** `src/cms/adapter.ts` declares the vendor-neutral interface. The existing PCO mirror + signal poller migrate behind a `PcoAdapter` implementation.
+- **Dashboard (Phase B, next major build):** Next.js + Supabase Auth + Supabase Realtime + Vercel hosting. Mobile-responsive web app. Five screens: My Touches Today / Touch Detail / Guest Journey / Becky's Dashboard / Pastor View.
+- **Sends (Phase D):** Twilio for SMS, SendGrid (or Gmail) for email. The dashboard becomes the approval-and-send surface.
+
+### Open question
+
+The dashboard stack default is Next.js. Alternatives (Remix, Astro, plain React + Express) remain on the table if Stephen has constraints; defer to Phase B kickoff.

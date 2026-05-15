@@ -9,6 +9,7 @@
 //   - init_core_schema
 //   - lock_down_with_rls
 //   - index_followup_trigger_signal
+//   - guest_journey_schema
 // ============================================================================
 
 export type Json =
@@ -25,6 +26,39 @@ export type Database = {
   };
   public: {
     Tables: {
+      church_config: {
+        Row: {
+          cms_kind: string;
+          created_at: string;
+          id: string;
+          links: Json;
+          name: string;
+          slug: string;
+          timezone: string;
+          updated_at: string;
+        };
+        Insert: {
+          cms_kind?: string;
+          created_at?: string;
+          id?: string;
+          links?: Json;
+          name: string;
+          slug: string;
+          timezone?: string;
+          updated_at?: string;
+        };
+        Update: {
+          cms_kind?: string;
+          created_at?: string;
+          id?: string;
+          links?: Json;
+          name?: string;
+          slug?: string;
+          timezone?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       communications: {
         Row: {
           approved_by: string | null;
@@ -199,6 +233,72 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'engagement_signals';
             referencedColumns: ['id'];
+          },
+        ];
+      };
+      guest_journeys: {
+        Row: {
+          cancel_reason: string | null;
+          cancelled_at: string | null;
+          completed_at: string | null;
+          created_at: string;
+          enrolled_at: string;
+          enrollment_kind: Database['public']['Enums']['engagement_signal_kind'];
+          enrollment_signal_id: string | null;
+          id: string;
+          notes: string | null;
+          person_pco_id: string;
+          returned_at: string | null;
+          status: Database['public']['Enums']['journey_status'];
+          updated_at: string;
+          workflow_version: string;
+        };
+        Insert: {
+          cancel_reason?: string | null;
+          cancelled_at?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+          enrolled_at?: string;
+          enrollment_kind: Database['public']['Enums']['engagement_signal_kind'];
+          enrollment_signal_id?: string | null;
+          id?: string;
+          notes?: string | null;
+          person_pco_id: string;
+          returned_at?: string | null;
+          status?: Database['public']['Enums']['journey_status'];
+          updated_at?: string;
+          workflow_version?: string;
+        };
+        Update: {
+          cancel_reason?: string | null;
+          cancelled_at?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+          enrolled_at?: string;
+          enrollment_kind?: Database['public']['Enums']['engagement_signal_kind'];
+          enrollment_signal_id?: string | null;
+          id?: string;
+          notes?: string | null;
+          person_pco_id?: string;
+          returned_at?: string | null;
+          status?: Database['public']['Enums']['journey_status'];
+          updated_at?: string;
+          workflow_version?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'guest_journeys_enrollment_signal_id_fkey';
+            columns: ['enrollment_signal_id'];
+            isOneToOne: false;
+            referencedRelation: 'engagement_signals';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'guest_journeys_person_pco_id_fkey';
+            columns: ['person_pco_id'];
+            isOneToOne: false;
+            referencedRelation: 'people';
+            referencedColumns: ['pco_id'];
           },
         ];
       };
@@ -462,6 +562,71 @@ export type Database = {
           },
         ];
       };
+      touches: {
+        Row: {
+          completed_at: string | null;
+          completed_by: string | null;
+          created_at: string;
+          due_at: string;
+          id: string;
+          is_recovery: boolean;
+          journey_id: string;
+          kind: Database['public']['Enums']['touch_kind'];
+          notes: string | null;
+          owner_role: Database['public']['Enums']['touch_owner_role'];
+          owner_user_id: string | null;
+          payload: Json;
+          scheduled_for: string;
+          status: Database['public']['Enums']['touch_status'];
+          touch_number: number;
+          updated_at: string;
+        };
+        Insert: {
+          completed_at?: string | null;
+          completed_by?: string | null;
+          created_at?: string;
+          due_at: string;
+          id?: string;
+          is_recovery?: boolean;
+          journey_id: string;
+          kind: Database['public']['Enums']['touch_kind'];
+          notes?: string | null;
+          owner_role: Database['public']['Enums']['touch_owner_role'];
+          owner_user_id?: string | null;
+          payload?: Json;
+          scheduled_for: string;
+          status?: Database['public']['Enums']['touch_status'];
+          touch_number: number;
+          updated_at?: string;
+        };
+        Update: {
+          completed_at?: string | null;
+          completed_by?: string | null;
+          created_at?: string;
+          due_at?: string;
+          id?: string;
+          is_recovery?: boolean;
+          journey_id?: string;
+          kind?: Database['public']['Enums']['touch_kind'];
+          notes?: string | null;
+          owner_role?: Database['public']['Enums']['touch_owner_role'];
+          owner_user_id?: string | null;
+          payload?: Json;
+          scheduled_for?: string;
+          status?: Database['public']['Enums']['touch_status'];
+          touch_number?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'touches_journey_id_fkey';
+            columns: ['journey_id'];
+            isOneToOne: false;
+            referencedRelation: 'guest_journeys';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: { [_ in never]: never };
     Functions: { [_ in never]: never };
@@ -480,9 +645,18 @@ export type Database = {
         | 'sent'
         | 'held'
         | 'overridden';
+      journey_status: 'active' | 'returned' | 'completed' | 'cancelled';
       lifecycle_stage: 'guest' | 'connected' | 'grouped' | 'serving' | 'leader';
       pastoral_flag_reason: 'death' | 'crisis' | 'prayer' | 'conflict' | 'sensitive' | 'other';
       stage_health: 'active' | 'at_risk' | 'inactive';
+      touch_kind: 'sms' | 'email' | 'handwritten_card' | 'phone_call' | 'event_invite';
+      touch_owner_role:
+        | 'connections_volunteer'
+        | 'senior_pastor'
+        | 'connections_pastor'
+        | 'lay_volunteer'
+        | 'matched_leader';
+      touch_status: 'pending' | 'drafting' | 'awaiting_action' | 'completed' | 'missed' | 'na';
     };
     CompositeTypes: { [_ in never]: never };
   };
