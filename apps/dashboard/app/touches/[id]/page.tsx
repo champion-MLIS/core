@@ -12,7 +12,11 @@ import {
   uncompleteTouchAction,
 } from '../actions';
 import { SubmitButton } from '../_components/SubmitButton';
+import { DraftPanel, type DraftBundle } from './_components/DraftPanel';
+import { draftTouchAction } from './draft-action';
 import { formatDateTime, relativeDay } from '../../../lib/format';
+
+const AI_DRAFTABLE_KINDS = new Set(['sms', 'email', 'event_invite']);
 
 const OWNER_ROLE_LABELS: Record<string, string> = {
   connections_volunteer: 'Connections volunteer',
@@ -341,16 +345,26 @@ export default async function TouchDetailPage({
                 </p>
               )}
 
-              {/* AI draft placeholder — Phase C wires this up */}
-              <div className="mt-5 rounded-md border border-dashed border-zinc-300 bg-white p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  AI draft
-                </p>
-                <p className="mt-1 text-sm text-zinc-600">
-                  Not yet drafted. Phase C wires the agent so it pre-fills SMS / email touches
-                  with a voice-checked draft for the volunteer to approve, edit, or rewrite.
-                </p>
-              </div>
+              {/* AI draft — Phase C */}
+              {AI_DRAFTABLE_KINDS.has(touch.kind) ? (
+                <div className="mt-5">
+                  <DraftPanel
+                    touchId={touch.id}
+                    channel={touch.kind as 'sms' | 'email' | 'event_invite'}
+                    bundle={
+                      ((touch.payload as { draft?: DraftBundle } | null)?.draft as
+                        | DraftBundle
+                        | undefined) ?? null
+                    }
+                    action={draftTouchAction}
+                  />
+                </div>
+              ) : (
+                <div className="mt-5 rounded-md border border-dashed border-zinc-200 bg-white p-4 text-xs text-zinc-500">
+                  This is a human-actioned touch — no AI draft. The guidance above is the
+                  spec; act on it directly and mark done when complete.
+                </div>
+              )}
             </div>
 
             {/* Action panel */}
