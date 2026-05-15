@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { createServerClient, createServiceClient } from '../../lib/supabase/server';
 import { signOutAction } from '../actions';
 import { completeTouchAction, snoozeTouchAction } from './actions';
+import { SubmitButton } from './_components/SubmitButton';
 import { formatDateTime, relativeDay } from '../../lib/format';
 import type { Database } from '@core/db/types.generated';
 
@@ -159,21 +160,15 @@ function TouchRow({ touch }: { touch: TouchRowData }) {
         <div className="flex items-center justify-end gap-2">
           <form action={completeTouchAction}>
             <input type="hidden" name="touch_id" value={touch.id} />
-            <button
-              type="submit"
-              className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
-            >
+            <SubmitButton pendingLabel="Marking…" tone="primary">
               Mark done
-            </button>
+            </SubmitButton>
           </form>
           <form action={snoozeTouchAction}>
             <input type="hidden" name="touch_id" value={touch.id} />
-            <button
-              type="submit"
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
-            >
+            <SubmitButton pendingLabel="Snoozing…" tone="secondary">
               Snooze 24h
-            </button>
+            </SubmitButton>
           </form>
         </div>
       </td>
