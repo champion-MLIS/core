@@ -179,7 +179,12 @@ function OpenTouchRow({ touch }: { touch: TouchRowData }) {
         <div className="text-xs text-zinc-500">PCO {touch.guest_journeys.people.pco_id}</div>
       </td>
       <td className="px-4 py-3">
-        <div className="font-medium text-zinc-900">{label}</div>
+        <Link
+          href={`/touches/${touch.id}`}
+          className="font-medium text-zinc-900 underline-offset-4 hover:underline"
+        >
+          {label}
+        </Link>
         <div className="text-xs text-zinc-500">
           {TOUCH_KIND_LABELS[touch.kind] ?? touch.kind}
           {touch.is_recovery ? ' · recovery' : ''}
