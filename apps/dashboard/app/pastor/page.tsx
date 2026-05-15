@@ -3,6 +3,8 @@ import { createServerClient, createServiceClient } from '../../lib/supabase/serv
 import { signOutAction } from '../actions';
 import { formatDateTime, relativeDay } from '../../lib/format';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Pastor View — curated for Stephen.
  *

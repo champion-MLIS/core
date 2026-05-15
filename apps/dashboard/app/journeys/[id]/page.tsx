@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createServerClient, createServiceClient } from '../../../lib/supabase/server';
+
+export const dynamic = 'force-dynamic';
 import { signOutAction } from '../../actions';
 import { formatDateTime, relativeDay } from '../../../lib/format';
 

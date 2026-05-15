@@ -1,6 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createServerClient, createServiceClient } from '../../../lib/supabase/server';
+
+// Server-rendered per request. Without this, Next dev mode tries to pre-
+// generate static paths and trips on the Supabase package import.
+export const dynamic = 'force-dynamic';
 import { signOutAction } from '../../actions';
 import {
   completeTouchAction,
