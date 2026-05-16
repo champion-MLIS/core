@@ -27,25 +27,43 @@ interface Props {
   touchId: string;
   channel: 'sms' | 'email' | 'event_invite';
   bundle: DraftBundle | null;
-  action: (formData: FormData) => Promise<void>;
+  /** Server action that generates / regenerates the draft. */
+  draftAction: (formData: FormData) => Promise<void>;
+  /** Server action that sends the drafted message and marks the touch complete. */
+  sendAction: (formData: FormData) => Promise<void>;
+  /** Primary recipient email on file. Null if none — disables the email send button. */
+  recipientEmail: string | null;
+  /** Primary recipient phone on file. Null if none — disables the SMS send button. */
+  recipientPhone: string | null;
 }
 
-export function DraftPanel({ touchId, channel, bundle, action }: Props) {
+export function DraftPanel({
+  touchId,
+  channel,
+  bundle,
+  draftAction,
+  sendAction,
+  recipientEmail,
+  recipientPhone,
+}: Props) {
   if (!bundle) {
     return (
       <div className="rounded-md border border-dashed border-zinc-300 bg-white p-5">
         <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">AI draft</p>
         <p className="mt-1 text-sm text-zinc-700">
           No draft yet. Generate one in Champion&apos;s voice — you can copy / edit / rewrite
-          before sending.
+          before sending, or send directly with one click.
         </p>
-        <form action={action} className="mt-3">
+        <form action={draftAction} className="mt-3">
           <input type="hidden" name="touch_id" value={touchId} />
-          <DraftButton>Draft this message</DraftButton>
+          <BusyButton label="Draft this message" busyLabel="Drafting…" tone="primary" />
         </form>
       </div>
     );
   }
+
+  const showEmail = bundle.draft.email && (channel === 'email' || channel === 'event_invite');
+  const showSms = bundle.draft.sms && (channel === 'sms' || channel === 'event_invite');
 
   return (
     <div className="rounded-md border border-zinc-200 bg-white p-5">
@@ -62,34 +80,94 @@ export function DraftPanel({ touchId, channel, bundle, action }: Props) {
         </span>
       </div>
 
-      {bundle.draft.email && (channel === 'email' || channel === 'event_invite') && (
-        <DraftBlock title="Email" body={`Subject: ${bundle.draft.email.subject}\n\n${bundle.draft.email.body}`} />
+      {showEmail && bundle.draft.email && (
+        <ChannelBlock
+          title="Email"
+          recipient={recipientEmail}
+          recipientLabel="To"
+          body={`Subject: ${bundle.draft.email.subject}\n\n${bundle.draft.email.body}`}
+          sendAction={sendAction}
+          touchId={touchId}
+          channelValue="email"
+          canSend={recipientEmail !== null}
+          noRecipientMessage="No email on file."
+        />
       )}
 
-      {bundle.draft.sms && (channel === 'sms' || channel === 'event_invite') && (
-        <DraftBlock title="SMS" body={bundle.draft.sms.body} />
+      {showSms && bundle.draft.sms && (
+        <ChannelBlock
+          title="SMS"
+          recipient={recipientPhone}
+          recipientLabel="To"
+          body={bundle.draft.sms.body}
+          sendAction={sendAction}
+          touchId={touchId}
+          channelValue="sms"
+          canSend={recipientPhone !== null}
+          noRecipientMessage="No phone on file."
+        />
       )}
 
       <VoiceCheckBadge check={bundle.voice_check} />
 
-      <form action={action} className="mt-4">
+      <form action={draftAction} className="mt-4">
         <input type="hidden" name="touch_id" value={touchId} />
-        <DraftButton variant="secondary">Regenerate</DraftButton>
+        <BusyButton label="Regenerate" busyLabel="Regenerating…" tone="secondary" />
       </form>
     </div>
   );
 }
 
-function DraftBlock({ title, body }: { title: string; body: string }) {
+function ChannelBlock({
+  title,
+  recipient,
+  recipientLabel,
+  body,
+  sendAction,
+  touchId,
+  channelValue,
+  canSend,
+  noRecipientMessage,
+}: {
+  title: string;
+  recipient: string | null;
+  recipientLabel: string;
+  body: string;
+  sendAction: (formData: FormData) => Promise<void>;
+  touchId: string;
+  channelValue: 'sms' | 'email';
+  canSend: boolean;
+  noRecipientMessage: string;
+}) {
   return (
-    <div className="mt-4">
+    <div className="mt-4 rounded-md border border-zinc-100 p-3">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-semibold text-zinc-900">{title}</h4>
         <CopyButton text={body} />
       </div>
+      <div className="mt-1 text-xs text-zinc-500">
+        {recipientLabel}:{' '}
+        {recipient ? (
+          <span className="font-medium text-zinc-700">{recipient}</span>
+        ) : (
+          <span className="italic">{noRecipientMessage}</span>
+        )}
+      </div>
       <pre className="mt-2 whitespace-pre-wrap break-words rounded-md bg-zinc-50 p-3 font-sans text-sm leading-relaxed text-zinc-800">
         {body}
       </pre>
+      {canSend && (
+        <form action={sendAction} className="mt-3">
+          <input type="hidden" name="touch_id" value={touchId} />
+          <input type="hidden" name="channel" value={channelValue} />
+          <BusyButton
+            label={`Send ${title} now`}
+            busyLabel="Sending…"
+            tone="primary"
+            confirmFirst={`Send this ${title.toLowerCase()} to ${recipient}? This cannot be undone.`}
+          />
+        </form>
+      )}
     </div>
   );
 }
@@ -105,8 +183,7 @@ function CopyButton({ text }: { text: string }) {
           setCopied(true);
           setTimeout(() => setCopied(false), 1800);
         } catch {
-          // Clipboard API can fail on iframes; fall back to a select/copy
-          // by surfacing the textarea — for now, silently swallow.
+          /* swallow; fallback would be a selectable textarea */
         }
       }}
       className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
@@ -167,23 +244,36 @@ function CheckRow({
   );
 }
 
-function DraftButton({
-  children,
-  variant = 'primary',
+function BusyButton({
+  label,
+  busyLabel,
+  tone = 'primary',
+  confirmFirst,
 }: {
-  children: React.ReactNode;
-  variant?: 'primary' | 'secondary';
+  label: string;
+  busyLabel: string;
+  tone?: 'primary' | 'secondary';
+  /** If provided, ask the user to confirm via window.confirm before submitting. */
+  confirmFirst?: string;
 }) {
   const { pending } = useFormStatus();
   const base =
     'rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60';
   const styles =
-    variant === 'primary'
+    tone === 'primary'
       ? 'bg-zinc-900 text-white hover:bg-zinc-800'
       : 'border border-zinc-300 text-zinc-700 hover:bg-zinc-100';
   return (
-    <button type="submit" disabled={pending} className={`${base} ${styles}`}>
-      {pending ? 'Drafting…' : children}
+    <button
+      type="submit"
+      disabled={pending}
+      onClick={(e) => {
+        if (!confirmFirst) return;
+        if (!window.confirm(confirmFirst)) e.preventDefault();
+      }}
+      className={`${base} ${styles}`}
+    >
+      {pending ? busyLabel : label}
     </button>
   );
 }

@@ -14,6 +14,7 @@ import {
 import { SubmitButton } from '../_components/SubmitButton';
 import { DraftPanel, type DraftBundle } from './_components/DraftPanel';
 import { draftTouchAction } from './draft-action';
+import { sendTouchAction } from './send-action';
 import { formatDateTime, relativeDay } from '../../../lib/format';
 
 const AI_DRAFTABLE_KINDS = new Set(['sms', 'email', 'event_invite']);
@@ -345,7 +346,7 @@ export default async function TouchDetailPage({
                 </p>
               )}
 
-              {/* AI draft — Phase C */}
+              {/* AI draft + send — Phase C & D */}
               {AI_DRAFTABLE_KINDS.has(touch.kind) ? (
                 <div className="mt-5">
                   <DraftPanel
@@ -356,7 +357,10 @@ export default async function TouchDetailPage({
                         | DraftBundle
                         | undefined) ?? null
                     }
-                    action={draftTouchAction}
+                    draftAction={draftTouchAction}
+                    sendAction={sendTouchAction}
+                    recipientEmail={primaryEmail}
+                    recipientPhone={primaryPhone}
                   />
                 </div>
               ) : (
