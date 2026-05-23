@@ -250,31 +250,40 @@ npm run lint
 ## Build Sequence
 
 1. ✅ **Architecture captured** — this repo
-2. 🔄 **Guest Follow-Up workflow** — first build, end to end
+2. ✅ **Guest Follow-Up workflow** — first build, end to end
    - ✅ **Step 1:** PCO read probe — credentials proven, response shape validated (`npm run pco:recent`)
    - ✅ **Step 2:** Guest Intake Agent — Supabase persistence + watermark-driven incremental sync (`npm run intake:poll`)
    - ✅ **Step 3:** Signal poller — connect cards & prayer requests via PCO Forms → `engagement_signals` + `followup_queue` (`npm run intake:signals`)
-   - ✅ **Step 4:** Guest Follow-Up Agent — Claude draft + voice check, writes to `followup_queue.payload` (`npm run agent:draft`)
+   - ✅ **Step 4:** Guest Follow-Up Agent — single-drafter prototype, superseded by Phase C per-touch drafters below
 
-3. 🔄 **21-Day Touch Sequence** — Stage 1 depth ([ADR-003](docs/decisions.md))
+3. ✅ **21-Day Touch Sequence** — Stage 1 depth ([ADR-003](docs/decisions.md), [ADR-004](docs/decisions.md))
    - ✅ **Phase A:** Schedule + state machine — 8 touches per guest, enrollment on signal, return detection (`npm run touches:status -- --person=PCO_ID`)
    - ✅ **Phase A.2:** CMS adapter refactor — intake behind `src/cms/adapter.ts` interface for transferability
-   - 🔄 **Phase B:** In-house dashboard — Next.js + Supabase Auth + RLS
+   - ✅ **Phase A completion:** attendance signal source (`npm run attendance:record`), touch enrichment (`src/journey/enrich-touch.ts`), volunteer continuity (`src/journey/volunteers.ts`)
+   - ✅ **Phase B:** In-house dashboard — Next.js + Supabase Auth + RLS
      - ✅ **B.1:** Scaffold + magic-link auth (championchurch.org domain restricted) + protected home with system counts
-     - ⬜ **B.2:** My Touches Today (worklist screen)
-     - ⬜ **B.3:** Touch Detail (context, draft, action panel)
-     - ⬜ **B.4:** Guest Journey timeline
-     - ⬜ **B.5:** Becky's Dashboard (active journeys + metrics)
-     - ⬜ **B.6:** Pastor View (state of the church)
-   - ⬜ **Phase C:** Touch-specific drafting — per-touch prompt rules, sermon context (formerly Step 4.1), family/kids personalization
-   - ⬜ **Phase D:** Send + escalation — Twilio (SMS) + SendGrid (email), missed-touch grace period → Becky's queue
+     - ✅ **B.2:** My Touches Today (worklist screen) — with contextual reference and held-pending-data filters
+     - ✅ **B.3:** Touch Detail (context, draft, action panel — Mark Attended / Hold / Pastoral Override / role-aware precious cargo)
+     - ✅ **B.4:** Guest Journey timeline
+     - ✅ **B.5:** Becky's Dashboard (active journeys + metrics)
+     - ✅ **B.6:** Pastor View (state of the church)
+   - ✅ **Phase C:** Per-touch drafting (T1–T9 + contextual reference) — attentiveness standard with hold-pending-data discipline; voice-sample citation per draft with `approximated` flag where no canonical sample exists
+   - ✅ **Phase D:** Real send — Twilio (SMS) + Resend (email), logged to `communications`
    - ⬜ **Phase E:** Tracking metrics — touch completion rate, recovery usage, return rate by touch, days-to-return
 
-4. **Cross-cutting**
+4. ✅ **Prayer Response Architecture** — [ADR-004](docs/decisions.md)
+   - ✅ Calibrated acknowledgment with deterministic constraint scan (no scripture / no resources / no characterization)
+   - ✅ Precious-cargo storage with RLS scoping to pastoral_care role
+   - ✅ PCPOC routing (default: Becky) + 48h escalation (`npm run prayer:respond`)
+   - ✅ Day-11 contextual reference touch insertion
+
+5. **Cross-cutting (open)**
    - ⬜ **Step 3.1:** First-time giving signal via PCO Giving (Subsplash → PCO sync going live week of 2026-05-21)
-   - ⬜ **Step 3.2:** Child check-in signal via PCO Check-Ins
-3. ⬜ **Weekly State of the Church** — after guest follow-up ships
-4. ⬜ Additional workflows — one at a time, never in parallel
+   - ⬜ **Step 3.2:** Child check-in signal via PCO Check-Ins (today: staff-marked via `attendance:record`)
+   - ⬜ Migration of precious-cargo content from Supabase to PCO (after PCO Pastoral Care permission group is configured)
+
+6. ⬜ **Weekly State of the Church** — after guest follow-up shipping has stabilized
+7. ⬜ Additional workflows — one at a time, never in parallel
 
 ---
 
