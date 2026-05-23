@@ -33,10 +33,22 @@ const TOUCH_KIND_LABELS: Record<string, string> = {
   event_invite: 'Event invite',
 };
 
-// Recently-completed window: 24 hours.
 const COMPLETED_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-export default async function TouchesPage() {
+type Filter = 'all' | 'standard' | 'contextual' | 'held' | 'recovery';
+
+export default async function TouchesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>;
+}) {
+  const params = await searchParams;
+  const filter: Filter = (
+    ['all', 'standard', 'contextual', 'held', 'recovery'] as const
+  ).includes(params.filter as Filter)
+    ? (params.filter as Filter)
+    : 'all';
+
   const auth = await createServerClient();
   const {
     data: { user },
@@ -46,26 +58,39 @@ export default async function TouchesPage() {
   const db = createServiceClient();
   const completedSince = new Date(Date.now() - COMPLETED_WINDOW_MS).toISOString();
 
-  const [openRes, doneRes] = await Promise.all([
-    db
-      .from('touches')
-      .select(
-        `
-        id, touch_number, kind, owner_role, is_recovery,
-        scheduled_for, due_at, status, payload, journey_id, completed_at, completed_by,
-        guest_journeys!inner (
-          id, person_pco_id,
-          people!inner ( pco_id, first_name, last_name, preferred_name )
-        )
-      `,
+  let openQuery = db
+    .from('touches')
+    .select(
+      `
+      id, touch_number, kind, owner_role, is_recovery, is_contextual_reference,
+      held_pending_data_at, held_pending_data_reason,
+      scheduled_for, due_at, status, payload, journey_id, completed_at, completed_by,
+      guest_journeys!inner (
+        id, person_pco_id,
+        people!inner ( pco_id, first_name, last_name, preferred_name )
       )
-      .in('status', OPEN_STATUSES)
-      .order('scheduled_for', { ascending: true }),
+    `,
+    )
+    .in('status', OPEN_STATUSES);
+
+  if (filter === 'standard') {
+    openQuery = openQuery.eq('is_contextual_reference', false).eq('is_recovery', false);
+  } else if (filter === 'contextual') {
+    openQuery = openQuery.eq('is_contextual_reference', true);
+  } else if (filter === 'recovery') {
+    openQuery = openQuery.eq('is_recovery', true);
+  } else if (filter === 'held') {
+    openQuery = openQuery.not('held_pending_data_at', 'is', null);
+  }
+
+  const [openRes, doneRes, heldCountRes, ctxRefCountRes] = await Promise.all([
+    openQuery.order('scheduled_for', { ascending: true }),
     db
       .from('touches')
       .select(
         `
-        id, touch_number, kind, owner_role, is_recovery,
+        id, touch_number, kind, owner_role, is_recovery, is_contextual_reference,
+        held_pending_data_at, held_pending_data_reason,
         scheduled_for, due_at, status, payload, journey_id, completed_at, completed_by,
         guest_journeys!inner (
           id, person_pco_id,
@@ -77,6 +102,16 @@ export default async function TouchesPage() {
       .gte('completed_at', completedSince)
       .order('completed_at', { ascending: false })
       .limit(20),
+    db
+      .from('touches')
+      .select('id', { count: 'exact', head: true })
+      .in('status', OPEN_STATUSES)
+      .not('held_pending_data_at', 'is', null),
+    db
+      .from('touches')
+      .select('id', { count: 'exact', head: true })
+      .in('status', OPEN_STATUSES)
+      .eq('is_contextual_reference', true),
   ]);
 
   if (openRes.error) throw new Error(`open worklist query failed: ${openRes.error.message}`);
@@ -84,6 +119,8 @@ export default async function TouchesPage() {
 
   const openTouches = (openRes.data ?? []) as TouchRowData[];
   const doneTouches = (doneRes.data ?? []) as TouchRowData[];
+  const heldCount = heldCountRes.count ?? 0;
+  const ctxRefCount = ctxRefCountRes.count ?? 0;
 
   return (
     <main className="min-h-dvh">
@@ -118,8 +155,10 @@ export default async function TouchesPage() {
       </header>
 
       <section className="mx-auto max-w-6xl px-6 py-8">
+        <FilterTabs current={filter} heldCount={heldCount} ctxRefCount={ctxRefCount} />
+
         {openTouches.length === 0 ? (
-          <EmptyState />
+          <EmptyState filter={filter} />
         ) : (
           <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
             <table className="w-full text-sm">
@@ -169,10 +208,58 @@ export default async function TouchesPage() {
   );
 }
 
+function FilterTabs({
+  current,
+  heldCount,
+  ctxRefCount,
+}: {
+  current: Filter;
+  heldCount: number;
+  ctxRefCount: number;
+}) {
+  const tabs: Array<{ key: Filter; label: string; badge?: number }> = [
+    { key: 'all', label: 'All' },
+    { key: 'standard', label: 'Standard only' },
+    { key: 'recovery', label: 'Recovery' },
+    { key: 'contextual', label: 'Contextual reference', badge: ctxRefCount },
+    { key: 'held', label: 'Held — needs info', badge: heldCount },
+  ];
+  return (
+    <nav className="mb-5 flex flex-wrap gap-2">
+      {tabs.map((t) => {
+        const active = t.key === current;
+        return (
+          <Link
+            key={t.key}
+            href={t.key === 'all' ? '/touches' : `/touches?filter=${t.key}`}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              active
+                ? 'border-zinc-900 bg-zinc-900 text-white'
+                : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+            }`}
+          >
+            {t.label}
+            {typeof t.badge === 'number' && t.badge > 0 && (
+              <span
+                className={`inline-flex min-w-[1.25rem] justify-center rounded-full px-1.5 text-[10px] font-semibold ${
+                  active ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-700'
+                }`}
+              >
+                {t.badge}
+              </span>
+            )}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 function OpenTouchRow({ touch }: { touch: TouchRowData }) {
   const guestName = guestNameOf(touch);
   const label =
     (touch.payload as { label?: string } | null)?.label ?? `Touch ${touch.touch_number}`;
+  const isHeld = touch.held_pending_data_at !== null;
 
   return (
     <tr className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
@@ -198,9 +285,18 @@ function OpenTouchRow({ touch }: { touch: TouchRowData }) {
         >
           {label}
         </Link>
-        <div className="text-xs text-zinc-500">
-          {TOUCH_KIND_LABELS[touch.kind] ?? touch.kind}
-          {touch.is_recovery ? ' · recovery' : ''}
+        <div className="text-xs text-zinc-500 flex flex-wrap items-center gap-1">
+          <span>{TOUCH_KIND_LABELS[touch.kind] ?? touch.kind}</span>
+          {touch.is_contextual_reference && (
+            <span className="inline-flex rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800">
+              contextual reference
+            </span>
+          )}
+          {touch.is_recovery && (
+            <span className="inline-flex rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700">
+              recovery
+            </span>
+          )}
         </div>
       </td>
       <td className="px-4 py-3 text-zinc-700">
@@ -211,7 +307,16 @@ function OpenTouchRow({ touch }: { touch: TouchRowData }) {
         <div className="text-xs text-zinc-500">{formatDateTime(touch.due_at)}</div>
       </td>
       <td className="px-4 py-3">
-        <StatusBadge status={touch.status} />
+        {isHeld ? (
+          <span
+            className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+            title={touch.held_pending_data_reason ?? ''}
+          >
+            held
+          </span>
+        ) : (
+          <StatusBadge status={touch.status} />
+        )}
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center justify-end">
@@ -291,16 +396,19 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function EmptyState() {
+function EmptyState({ filter }: { filter: Filter }) {
+  const titles: Record<Filter, string> = {
+    all: 'No open touches.',
+    standard: 'No standard touches open.',
+    recovery: 'No recovery touches open.',
+    contextual: 'No contextual reference touches.',
+    held: 'No held touches.',
+  };
   return (
     <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-10 text-center">
-      <h2 className="text-base font-semibold text-zinc-900">No open touches.</h2>
+      <h2 className="text-base font-semibold text-zinc-900">{titles[filter]}</h2>
       <p className="mt-1 text-sm text-zinc-600">
-        Every touch is complete, snoozed, or no journeys are active yet.
-      </p>
-      <p className="mt-4 text-xs text-zinc-500">
-        Journeys start when a connect card arrives in PCO. Until that happens, this page is
-        quiet.
+        Every touch in this view is complete, snoozed, or no journeys match the filter.
       </p>
     </div>
   );
@@ -315,14 +423,15 @@ function guestNameOf(touch: TouchRowData): string {
   );
 }
 
-// Joined-query shape. PostgREST resolves this at runtime; we declare it for
-// strict typing on the row components.
 type TouchRowData = {
   id: string;
   touch_number: number;
   kind: string;
   owner_role: string;
   is_recovery: boolean;
+  is_contextual_reference: boolean;
+  held_pending_data_at: string | null;
+  held_pending_data_reason: string | null;
   scheduled_for: string;
   due_at: string;
   status: string;

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { createServerClient, createServiceClient } from '../lib/supabase/server';
+import { resolveStaffRole, isPastoralCare } from '../lib/roles';
 
 export const dynamic = 'force-dynamic';
 import { signOutAction } from './actions';
@@ -12,6 +13,8 @@ import {
   getMissedTouches,
 } from '../lib/metrics';
 import { formatDateTime, relativeDay } from '../lib/format';
+import { runPrayerResponseAction } from './touches/[id]/prayer-response-action';
+import { SubmitButton } from './touches/_components/SubmitButton';
 
 const OWNER_ROLE_LABELS: Record<string, string> = {
   connections_volunteer: 'Connections volunteer',
@@ -28,7 +31,16 @@ export default async function HomePage() {
   } = await auth.auth.getUser();
   if (!user) return null;
 
+  const staffRole = await resolveStaffRole(user.email);
+  const pastoralCare = isPastoralCare(staffRole);
+
   const db = createServiceClient();
+
+  // For pastoral-care users, fetch the precious-cargo queue alongside the
+  // metrics. Non-pastoral users skip the queries entirely.
+  const preciousCargoPromise = pastoralCare
+    ? loadPreciousCargoQueue(db)
+    : Promise.resolve({ pendingSignals: [], activeRequests: [] });
 
   const [
     { count: pendingTouches },
@@ -40,6 +52,7 @@ export default async function HomePage() {
     daysToReturn,
     recentJourneys,
     missedTouches,
+    preciousCargo,
   ] = await Promise.all([
     db
       .from('touches')
@@ -53,6 +66,7 @@ export default async function HomePage() {
     getDaysToReturnDistribution(db),
     getRecentActiveJourneys(db, 10),
     getMissedTouches(db),
+    preciousCargoPromise,
   ]);
 
   return (
@@ -101,6 +115,87 @@ export default async function HomePage() {
           <Tile label="Active journeys" value={activeJourneys ?? 0} />
           <Tile label="Returned this cycle" value={returnedJourneys ?? 0} />
         </div>
+
+        {/* Precious cargo queue — pastoral_care only (ADR-004) */}
+        {pastoralCare && (preciousCargo.pendingSignals.length > 0 || preciousCargo.activeRequests.length > 0) && (
+          <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-5">
+            <h2 className="text-sm font-semibold tracking-wide text-violet-900 uppercase">
+              Precious cargo
+            </h2>
+            <p className="mt-1 text-xs text-violet-700">
+              Visible to pastoral care role only. ADR-004 §3.1.
+            </p>
+
+            {preciousCargo.pendingSignals.length > 0 && (
+              <div className="mt-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-violet-900">
+                  Pending prayer-request signals ({preciousCargo.pendingSignals.length})
+                </h3>
+                <p className="mt-1 text-xs text-violet-700">
+                  These signals have not yet been captured + acknowledged by the Prayer Response
+                  Agent. Process now to send the calibrated acknowledgment and schedule the Day-11
+                  contextual reference touch.
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {preciousCargo.pendingSignals.map((s) => (
+                    <li
+                      key={s.id}
+                      className="flex items-center justify-between rounded-md border border-violet-200 bg-white p-3 text-sm"
+                    >
+                      <div>
+                        <div className="font-medium text-zinc-900">
+                          {s.guestName}{' '}
+                          <span className="text-xs text-zinc-500">· PCO {s.personPcoId}</span>
+                        </div>
+                        <div className="mt-0.5 text-xs text-zinc-600">
+                          Captured {relativeDay(s.occurredAt)} · channel {s.channel}
+                        </div>
+                      </div>
+                      <form action={runPrayerResponseAction}>
+                        <input type="hidden" name="signal_id" value={s.id} />
+                        <SubmitButton pendingLabel="Processing…" tone="primary">
+                          Process now
+                        </SubmitButton>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {preciousCargo.activeRequests.length > 0 && (
+              <div className="mt-5">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-violet-900">
+                  In follow-up ({preciousCargo.activeRequests.length})
+                </h3>
+                <ul className="mt-2 divide-y divide-violet-200 rounded-md border border-violet-200 bg-white">
+                  {preciousCargo.activeRequests.map((r) => (
+                    <li key={r.id} className="px-3 py-2 text-sm">
+                      <div className="flex items-baseline justify-between">
+                        <div className="font-medium text-zinc-900">
+                          {r.guestName}
+                          <span className="ml-2 text-xs text-zinc-500">· PCO {r.personPcoId}</span>
+                        </div>
+                        <div className="text-xs text-zinc-600">
+                          {r.escalated ? (
+                            <span className="font-medium text-red-700">⚠ escalated</span>
+                          ) : r.acknowledgedAt ? (
+                            <>Acknowledged {relativeDay(r.acknowledgedAt)}</>
+                          ) : (
+                            <>Captured, not yet acknowledged</>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-0.5 text-xs text-zinc-600">
+                        Assigned to {r.assignedTo ?? '(unassigned)'} · channel {r.channel}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Missed touches — Becky's escalation queue */}
         {missedTouches.length > 0 && (
@@ -365,6 +460,115 @@ function DaysToReturnHistogram({
       ))}
     </div>
   );
+}
+
+interface PendingPrayerSignal {
+  id: string;
+  personPcoId: string;
+  guestName: string;
+  occurredAt: string;
+  channel: string;
+}
+
+interface ActivePrayerRequest {
+  id: string;
+  personPcoId: string;
+  guestName: string;
+  channel: string;
+  acknowledgedAt: string | null;
+  assignedTo: string | null;
+  escalated: boolean;
+}
+
+async function loadPreciousCargoQueue(
+  db: ReturnType<typeof createServiceClient>,
+): Promise<{
+  pendingSignals: PendingPrayerSignal[];
+  activeRequests: ActivePrayerRequest[];
+}> {
+  // 1) prayer_request signals that haven't been captured into prayer_requests yet
+  const { data: signals } = await db
+    .from('engagement_signals')
+    .select('id, person_pco_id, occurred_at, payload')
+    .eq('kind', 'prayer_request')
+    .order('occurred_at', { ascending: true });
+
+  const signalRows = signals ?? [];
+  let pendingSignals: PendingPrayerSignal[] = [];
+  if (signalRows.length > 0) {
+    const signalIds = signalRows.map((s) => s.id);
+    const { data: captured } = await db
+      .from('prayer_requests')
+      .select('source_signal_id')
+      .in('source_signal_id', signalIds);
+    const capturedSet = new Set((captured ?? []).map((c) => c.source_signal_id).filter(Boolean));
+    const uncaptured = signalRows.filter((s) => !capturedSet.has(s.id));
+
+    if (uncaptured.length > 0) {
+      const personIds = uncaptured.map((s) => s.person_pco_id);
+      const { data: people } = await db
+        .from('people')
+        .select('pco_id, first_name, last_name, preferred_name')
+        .in('pco_id', personIds);
+      const peopleMap = new Map(
+        (people ?? []).map((p) => [p.pco_id, p]),
+      );
+
+      pendingSignals = uncaptured.map((s) => {
+        const p = peopleMap.get(s.person_pco_id);
+        const guestName =
+          (p &&
+            ([p.first_name, p.last_name].filter(Boolean).join(' ').trim() ||
+              p.preferred_name)) ||
+          `(${s.person_pco_id})`;
+        const channel = (s.payload as { channel?: string } | null)?.channel ?? 'unknown';
+        return {
+          id: s.id,
+          personPcoId: s.person_pco_id,
+          guestName,
+          occurredAt: s.occurred_at,
+          channel,
+        };
+      });
+    }
+  }
+
+  // 2) prayer_requests currently in_followup — Becky's working queue
+  const { data: active } = await db
+    .from('prayer_requests')
+    .select('id, person_pco_id, channel, acknowledged_at, assigned_to, escalated_at, status')
+    .eq('status', 'in_followup')
+    .order('acknowledged_at', { ascending: false });
+
+  const activeRows = active ?? [];
+  let activeRequests: ActivePrayerRequest[] = [];
+  if (activeRows.length > 0) {
+    const personIds = activeRows.map((r) => r.person_pco_id);
+    const { data: people } = await db
+      .from('people')
+      .select('pco_id, first_name, last_name, preferred_name')
+      .in('pco_id', personIds);
+    const peopleMap = new Map((people ?? []).map((p) => [p.pco_id, p]));
+    activeRequests = activeRows.map((r) => {
+      const p = peopleMap.get(r.person_pco_id);
+      const guestName =
+        (p &&
+          ([p.first_name, p.last_name].filter(Boolean).join(' ').trim() ||
+            p.preferred_name)) ||
+        `(${r.person_pco_id})`;
+      return {
+        id: r.id,
+        personPcoId: r.person_pco_id,
+        guestName,
+        channel: r.channel,
+        acknowledgedAt: r.acknowledged_at,
+        assignedTo: r.assigned_to,
+        escalated: r.escalated_at !== null,
+      };
+    });
+  }
+
+  return { pendingSignals, activeRequests };
 }
 
 function JourneyStatusPill({ status }: { status: string }) {
