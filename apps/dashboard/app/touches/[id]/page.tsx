@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createServerClient, createServiceClient } from '../../../lib/supabase/server';
+import { resolveStaffRole, isPastoralCare } from '../../../lib/roles';
 
 // Server-rendered per request. Without this, Next dev mode tries to pre-
 // generate static paths and trips on the Supabase package import.
@@ -11,6 +12,12 @@ import {
   snoozeTouchAction,
   uncompleteTouchAction,
 } from '../actions';
+import {
+  markAttendedAction,
+  holdTouchAction,
+  clearHoldAction,
+  pastoralOverrideAction,
+} from './panel-actions';
 import { SubmitButton } from '../_components/SubmitButton';
 import { DraftPanel, type DraftBundle } from './_components/DraftPanel';
 import { draftTouchAction } from './draft-action';
@@ -65,6 +72,9 @@ export default async function TouchDetailPage({
   } = await auth.auth.getUser();
   if (!user) return null;
 
+  const staffRole = await resolveStaffRole(user.email);
+  const pastoralCare = isPastoralCare(staffRole);
+
   const db = createServiceClient();
 
   // Touch + journey + person + household, all in one query.
@@ -72,14 +82,15 @@ export default async function TouchDetailPage({
     .from('touches')
     .select(
       `
-      id, touch_number, kind, owner_role, is_recovery,
+      id, touch_number, kind, owner_role, is_recovery, is_contextual_reference,
+      held_pending_data_at, held_pending_data_reason,
       scheduled_for, due_at, status, payload, journey_id,
       completed_at, completed_by, notes,
       guest_journeys!inner (
         id, person_pco_id, enrolled_at, enrollment_kind, status,
         people!inner (
           pco_id, first_name, last_name, preferred_name,
-          is_child, household_pco_id, current_stage
+          is_child, household_pco_id, current_stage, precious_cargo_refs
         )
       )
     `,
@@ -93,8 +104,10 @@ export default async function TouchDetailPage({
   const journey = touch.guest_journeys;
 
   // Parallel: contact, household with kids, all touches on the journey,
-  // active pastoral flags.
-  const [emailRes, phoneRes, householdRes, allTouchesRes, flagRes] = await Promise.all([
+  // active pastoral flags, precious-cargo refs (count for everyone, content
+  // for pastoral_care only).
+  const preciousCargoIds = ((person.precious_cargo_refs ?? []) as string[]).filter(Boolean);
+  const [emailRes, phoneRes, householdRes, allTouchesRes, flagRes, preciousCargoRes] = await Promise.all([
     db
       .from('emails')
       .select('address, is_primary')
@@ -129,6 +142,13 @@ export default async function TouchDetailPage({
       .select('id, reason, raised_at')
       .eq('person_pco_id', person.pco_id)
       .is('resolved_at', null),
+    preciousCargoIds.length > 0
+      ? db
+          .from('prayer_requests')
+          .select('*')
+          .in('id', preciousCargoIds)
+          .order('captured_at', { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const primaryEmail = emailRes.data?.address ?? null;
@@ -154,6 +174,31 @@ export default async function TouchDetailPage({
     payload: unknown;
   }>;
   const flags = flagRes.data ?? [];
+  type PreciousCargoFull = {
+    id: string;
+    captured_at: string;
+    channel: string;
+    status: string;
+    content: string;
+    acknowledged_at: string | null;
+    acknowledgment_text: string | null;
+    pcpoc_responded_at: string | null;
+    pcpoc_response_notes: string | null;
+    escalated_at: string | null;
+    assigned_to: string | null;
+  };
+  // The select returns the full row regardless of caller — UI rendering
+  // below gates the sensitive fields by `pastoralCare`. RLS will block the
+  // SELECT entirely for non-pastoral roles in production; the service-role
+  // client used by the dashboard bypasses RLS, so the gating is *only* in
+  // the rendering. That mirrors how the page handles other pastoral notes.
+  const preciousCargo = (preciousCargoRes.data ?? []) as PreciousCargoFull[];
+
+  const isHeld = touch.held_pending_data_at !== null;
+  const voiceSampleStatus =
+    (touch.payload as { voice_sample_status?: string } | null)?.voice_sample_status ?? null;
+  const voiceSampleCited =
+    (touch.payload as { voice_sample_cited?: string } | null)?.voice_sample_cited ?? null;
 
   const guestName =
     [person.first_name, person.last_name].filter(Boolean).join(' ').trim() ||
@@ -205,6 +250,40 @@ export default async function TouchDetailPage({
                 ? `Reason: ${flags[0]!.reason}. `
                 : `${flags.length} active flags. `}
               Do not act on this touch without explicit pastoral clearance.
+            </p>
+          </div>
+        )}
+
+        {isHeld && (
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <h3 className="text-sm font-semibold text-amber-900">
+              ⏸️ Held — pending data
+            </h3>
+            <p className="mt-1 text-sm text-amber-800">
+              {touch.held_pending_data_reason ?? 'No reason recorded.'}
+            </p>
+            <p className="mt-1 text-xs text-amber-700">
+              Held {touch.held_pending_data_at && relativeDay(touch.held_pending_data_at)}. Supply
+              the missing context (or accept the hold) before drafting.
+            </p>
+            <form action={clearHoldAction} className="mt-3">
+              <input type="hidden" name="touch_id" value={touch.id} />
+              <SubmitButton pendingLabel="Clearing…" tone="secondary">
+                Clear hold
+              </SubmitButton>
+            </form>
+          </div>
+        )}
+
+        {touch.is_contextual_reference && (
+          <div className="mb-6 rounded-lg border border-violet-200 bg-violet-50 p-4">
+            <h3 className="text-sm font-semibold text-violet-900">
+              Contextual reference touch (precious cargo)
+            </h3>
+            <p className="mt-1 text-sm text-violet-800">
+              Inserted because this person shared something personal. Reference by topic only —
+              never quote the original back. Sign-off uses the volunteer&apos;s first name. The
+              pastoral team is doing the actual care; this touch is a human check-in only.
             </p>
           </div>
         )}
@@ -339,11 +418,28 @@ export default async function TouchDetailPage({
                 </div>
               )}
 
-              {VOICE_SAMPLE_HINTS[touch.kind] && (
+              {voiceSampleCited ? (
                 <p className="mt-3 text-xs text-zinc-500">
-                  <strong className="text-zinc-700">Voice reference:</strong>{' '}
-                  {VOICE_SAMPLE_HINTS[touch.kind]}
+                  <strong className="text-zinc-700">Voice sample cited:</strong>{' '}
+                  {voiceSampleCited}
+                  {voiceSampleStatus === 'approximated' && (
+                    <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800">
+                      approximated
+                    </span>
+                  )}
+                  {voiceSampleStatus === 'canonical' && (
+                    <span className="ml-2 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800">
+                      canonical
+                    </span>
+                  )}
                 </p>
+              ) : (
+                VOICE_SAMPLE_HINTS[touch.kind] && (
+                  <p className="mt-3 text-xs text-zinc-500">
+                    <strong className="text-zinc-700">Voice reference:</strong>{' '}
+                    {VOICE_SAMPLE_HINTS[touch.kind]}
+                  </p>
+                )
               )}
 
               {/* AI draft + send — Phase C & D */}
@@ -385,7 +481,7 @@ export default async function TouchDetailPage({
                       <form action={uncompleteTouchAction}>
                         <input type="hidden" name="touch_id" value={touch.id} />
                         <SubmitButton pendingLabel="Undoing…" tone="secondary">
-                          Undo "done"
+                          Undo &quot;done&quot;
                         </SubmitButton>
                       </form>
                     </>
@@ -403,25 +499,130 @@ export default async function TouchDetailPage({
                           Snooze 24h
                         </SubmitButton>
                       </form>
-                      <button
-                        type="button"
-                        disabled
-                        className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-400"
-                        title="Becky escalation — wired in Phase D"
-                      >
-                        Escalate to Becky
-                      </button>
-                      <button
-                        type="button"
-                        disabled
-                        className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-400"
-                        title="Pastoral flag — wired with the override admin UI"
-                      >
-                        Flag for pastoral review
-                      </button>
+                      <form action={markAttendedAction} className="flex items-center gap-2">
+                        <input type="hidden" name="touch_id" value={touch.id} />
+                        <input
+                          type="date"
+                          name="service_date"
+                          defaultValue={new Date().toISOString().slice(0, 10)}
+                          className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs"
+                        />
+                        <SubmitButton pendingLabel="Recording…" tone="secondary">
+                          Mark attended
+                        </SubmitButton>
+                      </form>
                     </>
                   )}
                 </div>
+                {!isComplete && (
+                  <>
+                    <details className="mt-4 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm">
+                      <summary className="cursor-pointer text-zinc-700">
+                        Hold (need more info)
+                      </summary>
+                      <form action={holdTouchAction} className="mt-3 space-y-2">
+                        <input type="hidden" name="touch_id" value={touch.id} />
+                        <label className="block text-xs font-medium text-zinc-600">
+                          What context is missing?
+                        </label>
+                        <textarea
+                          name="reason"
+                          required
+                          rows={2}
+                          className="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm"
+                          placeholder='e.g., "Sermon title not synced from PCO yet"'
+                        />
+                        <SubmitButton pendingLabel="Holding…" tone="secondary">
+                          Hold this touch
+                        </SubmitButton>
+                      </form>
+                    </details>
+                    <details className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm">
+                      <summary className="cursor-pointer text-red-800">Pastoral override</summary>
+                      <p className="mt-2 text-xs text-red-700">
+                        Pauses ALL automation for this person until manually cleared. Use for
+                        death, crisis, conflict, sensitive material, etc.
+                      </p>
+                      <form action={pastoralOverrideAction} className="mt-3 space-y-2">
+                        <input type="hidden" name="touch_id" value={touch.id} />
+                        <select
+                          name="reason"
+                          className="w-full rounded-md border border-red-300 bg-white px-2 py-1 text-sm"
+                          defaultValue="sensitive"
+                        >
+                          <option value="death">Death / bereavement</option>
+                          <option value="crisis">Crisis</option>
+                          <option value="prayer">Prayer (pastoral followup needed)</option>
+                          <option value="conflict">Conflict</option>
+                          <option value="sensitive">Sensitive</option>
+                          <option value="other">Other</option>
+                        </select>
+                        <textarea
+                          name="notes"
+                          rows={2}
+                          className="w-full rounded-md border border-red-300 px-2 py-1 text-sm"
+                          placeholder="Notes (pastoral-only)"
+                        />
+                        <SubmitButton pendingLabel="Raising…" tone="secondary">
+                          Raise pastoral override
+                        </SubmitButton>
+                      </form>
+                    </details>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Precious cargo — references for everyone, content for pastoral_care */}
+            {preciousCargoIds.length > 0 && (
+              <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-5">
+                <h3 className="text-sm font-semibold tracking-tight text-violet-900">
+                  Precious cargo
+                </h3>
+                <p className="mt-1 text-xs text-violet-700">
+                  {preciousCargoIds.length}{' '}
+                  {preciousCargoIds.length === 1 ? 'record' : 'records'} on file.
+                  {!pastoralCare &&
+                    ' Content visible to pastoral care role only — references shown here.'}
+                </p>
+                <ul className="mt-3 space-y-3">
+                  {preciousCargo.map((pc) => (
+                    <li key={pc.id} className="rounded-md border border-violet-200 bg-white p-3">
+                      <div className="flex items-baseline justify-between text-xs text-zinc-600">
+                        <span>
+                          {pc.channel} · captured {pc.captured_at.slice(0, 10)}
+                        </span>
+                        <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-800">
+                          {pc.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                      {pastoralCare && (
+                        <>
+                          <p className="mt-2 whitespace-pre-line text-sm text-zinc-900">
+                            {pc.content}
+                          </p>
+                          {pc.acknowledged_at && (
+                            <p className="mt-2 text-xs text-zinc-600">
+                              Acknowledged {pc.acknowledged_at.slice(0, 16)}
+                              {pc.assigned_to && ` · assigned to ${pc.assigned_to}`}
+                            </p>
+                          )}
+                          {pc.pcpoc_responded_at && (
+                            <p className="mt-1 text-xs text-emerald-700">
+                              PCPOC responded {pc.pcpoc_responded_at.slice(0, 16)}
+                            </p>
+                          )}
+                          {pc.escalated_at && (
+                            <p className="mt-1 text-xs text-red-700">
+                              Escalated {pc.escalated_at.slice(0, 16)} — 48h window elapsed without
+                              PCPOC response
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>

@@ -9,18 +9,20 @@
  * marked missed). The journey itself transitions to 'returned'.
  *
  * Today's signal sources for "return":
- *   - service_attendance engagement_signal (when we wire up check-in for
- *     adult attendance — pending Step 3.2)
- *   - manual call from staff via a CLI / future dashboard
+ *   - service_attendance engagement_signal (CLI: attendance:record;
+ *     dashboard: "Mark Attended" button; future: PCO Check-Ins per Step 3.2)
+ *   - manual call from staff via the dashboard
  *
  * This module exposes two paths:
  *   1. markJourneyReturned(journeyId, returnedAt) — called when a return
  *      is confirmed; mutates journey + cancels remaining recovery touches
+ *      + decrements volunteer loads
  *   2. processReturnSignals() — scans for service_attendance signals that
  *      indicate a return for any currently-active journey and applies #1
  */
 
 import type { Db, JourneyRow } from '../db/index.ts';
+import { decrementVolunteerLoad } from './volunteers.ts';
 
 export interface MarkReturnedResult {
   journeyId: string;
@@ -74,6 +76,11 @@ export async function markJourneyReturned(
     .eq('id', j.id);
   if (uErr) throw new Error(`journey update failed: ${uErr.message}`);
 
+  // Decrement volunteer loads — the volunteers are no longer carrying
+  // this journey on their plate. Failures here are non-fatal; an admin
+  // can rebalance loads later if drift accumulates.
+  await releaseJourneyVolunteers(db, j);
+
   return {
     journeyId: j.id,
     cancelledTouchCount: cancelled?.length ?? 0,
@@ -82,11 +89,26 @@ export async function markJourneyReturned(
 }
 
 /**
+ * Decrement the load counters on whichever volunteers were assigned to
+ * this journey. Idempotency is at the caller's responsibility (we only
+ * call this from the active→returned transition, which is itself guarded).
+ */
+async function releaseJourneyVolunteers(db: Db, journey: JourneyRow): Promise<void> {
+  if (journey.assigned_connections_volunteer_id) {
+    await decrementVolunteerLoad(db, journey.assigned_connections_volunteer_id);
+  }
+  if (journey.assigned_lay_volunteer_id) {
+    await decrementVolunteerLoad(db, journey.assigned_lay_volunteer_id);
+  }
+}
+
+/**
  * Scan for service_attendance signals that came in AFTER the guest's
  * enrollment_at, and mark those journeys as returned.
  *
- * This is the auto-detection path. Manual marking (from a staff dashboard,
- * once we have one) uses markJourneyReturned directly.
+ * This is the auto-detection path. Manual marking (from the dashboard
+ * "Mark Attended" button or the attendance:record CLI) calls
+ * markJourneyReturned directly via this same function.
  */
 export async function processReturnSignals(
   db: Db,

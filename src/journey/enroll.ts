@@ -12,10 +12,22 @@
  * Pastoral override gate: if the person has an active pastoral_flag, the
  * enrollment short-circuits and creates NO journey. The Pastoral Override
  * Monitor owns the situation; nothing automated proceeds.
+ *
+ * Volunteer continuity (Part 1.3): at enrollment, pick a connections
+ * volunteer and a lay volunteer from the active pool by lowest load.
+ * Touches whose owner_role is `connections_volunteer` (1, 5, 7) route to
+ * the same volunteer for the whole journey; same for the lay volunteer
+ * on Touch 4. Empty pool → NULL assignment, role-based routing applies
+ * until pools are populated.
  */
 
-import type { Db, JourneyRow, TouchInsert } from '../db/index.ts';
+import type { Db, JourneyRow, TouchInsert, VolunteerRow } from '../db/index.ts';
 import { TOUCH_TEMPLATE, computeTouchTiming } from './touch-template.ts';
+import {
+  pickVolunteer,
+  incrementVolunteerLoad,
+  getVolunteer,
+} from './volunteers.ts';
 
 export type EnrollmentKind = 'connect_card' | 'first_giving' | 'child_checkin';
 
@@ -30,7 +42,13 @@ export interface EnrollOptions {
 }
 
 export type EnrollResult =
-  | { outcome: 'enrolled'; journey: JourneyRow; touchCount: number }
+  | {
+      outcome: 'enrolled';
+      journey: JourneyRow;
+      touchCount: number;
+      connectionsVolunteer: VolunteerRow | null;
+      layVolunteer: VolunteerRow | null;
+    }
   | { outcome: 'already_active'; journey: JourneyRow }
   | { outcome: 'blocked_pastoral_flag'; reason: string }
   | { outcome: 'person_not_mirrored'; reason: string };
@@ -39,8 +57,7 @@ export async function enrollGuest(db: Db, opts: EnrollOptions): Promise<EnrollRe
   const now = opts.now ?? (() => new Date());
   const nowDate = now();
 
-  // 1. Person must exist in our mirror (the signal poller already enforces this,
-  //    but guard here too for direct CLI/test usage).
+  // 1. Person must exist in our mirror.
   const { data: person, error: personErr } = await db
     .from('people')
     .select('pco_id')
@@ -83,7 +100,11 @@ export async function enrollGuest(db: Db, opts: EnrollOptions): Promise<EnrollRe
     return { outcome: 'already_active', journey: existing as JourneyRow };
   }
 
-  // 4. Create the journey.
+  // 4. Pick volunteers from the pool (NULL if empty pool).
+  const connectionsVol = await pickVolunteer(db, 'connections');
+  const layVol = await pickVolunteer(db, 'lay');
+
+  // 5. Create the journey with volunteer assignments.
   const { data: created, error: createErr } = await db
     .from('guest_journeys')
     .insert({
@@ -93,6 +114,8 @@ export async function enrollGuest(db: Db, opts: EnrollOptions): Promise<EnrollRe
       enrolled_at: nowDate.toISOString(),
       workflow_version: WORKFLOW_VERSION,
       status: 'active',
+      assigned_connections_volunteer_id: connectionsVol?.id ?? null,
+      assigned_lay_volunteer_id: layVol?.id ?? null,
     })
     .select('*')
     .single();
@@ -101,7 +124,16 @@ export async function enrollGuest(db: Db, opts: EnrollOptions): Promise<EnrollRe
 
   const journey = created as JourneyRow;
 
-  // 5. Schedule the 8 touches.
+  // 6. Increment volunteer loads. Best-effort: if a load update fails after
+  //    enrollment succeeded, we don't roll the journey back — the load drift
+  //    can be corrected by an admin tool later.
+  if (connectionsVol) await incrementVolunteerLoad(db, connectionsVol.id);
+  if (layVol) await incrementVolunteerLoad(db, layVol.id);
+
+  // 7. Schedule the 8 touches. Route touches to the assigned volunteer's
+  //    user_id when one exists (the volunteer has signed in to the dashboard).
+  //    Otherwise leave owner_user_id NULL and let role-based routing surface
+  //    the touch in any matching-role worklist.
   const touchRows: TouchInsert[] = TOUCH_TEMPLATE.map((t) => {
     const { scheduled_for, due_at } = computeTouchTiming(nowDate, t);
     return {
@@ -109,6 +141,7 @@ export async function enrollGuest(db: Db, opts: EnrollOptions): Promise<EnrollRe
       touch_number: t.touch_number,
       kind: t.kind,
       owner_role: t.owner_role,
+      owner_user_id: resolveOwnerUserId(t.owner_role, connectionsVol, layVol),
       is_recovery: t.is_recovery,
       scheduled_for: scheduled_for.toISOString(),
       due_at: due_at.toISOString(),
@@ -120,5 +153,39 @@ export async function enrollGuest(db: Db, opts: EnrollOptions): Promise<EnrollRe
   const { error: touchesErr } = await db.from('touches').insert(touchRows);
   if (touchesErr) throw new Error(`touches insert failed: ${touchesErr.message}`);
 
-  return { outcome: 'enrolled', journey, touchCount: touchRows.length };
+  return {
+    outcome: 'enrolled',
+    journey,
+    touchCount: touchRows.length,
+    connectionsVolunteer: connectionsVol,
+    layVolunteer: layVol,
+  };
+}
+
+function resolveOwnerUserId(
+  ownerRole: string,
+  connectionsVol: VolunteerRow | null,
+  layVol: VolunteerRow | null,
+): string | null {
+  if (ownerRole === 'connections_volunteer') return connectionsVol?.user_id ?? null;
+  if (ownerRole === 'lay_volunteer') return layVol?.user_id ?? null;
+  return null;
+}
+
+/**
+ * Resolve the volunteer assigned to a touch, if any. Used by enrichment
+ * and drafting to display the volunteer's name as the sender.
+ */
+export async function resolveVolunteerForTouch(
+  db: Db,
+  journey: Pick<JourneyRow, 'assigned_connections_volunteer_id' | 'assigned_lay_volunteer_id'>,
+  ownerRole: string,
+): Promise<VolunteerRow | null> {
+  if (ownerRole === 'connections_volunteer' && journey.assigned_connections_volunteer_id) {
+    return getVolunteer(db, journey.assigned_connections_volunteer_id);
+  }
+  if (ownerRole === 'lay_volunteer' && journey.assigned_lay_volunteer_id) {
+    return getVolunteer(db, journey.assigned_lay_volunteer_id);
+  }
+  return null;
 }

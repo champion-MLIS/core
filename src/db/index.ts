@@ -27,6 +27,14 @@ export type JourneyUpdate = Tables['guest_journeys']['Update'];
 export type TouchRow = Tables['touches']['Row'];
 export type TouchInsert = Tables['touches']['Insert'];
 export type TouchUpdate = Tables['touches']['Update'];
+export type VolunteerRow = Tables['volunteers']['Row'];
+export type VolunteerInsert = Tables['volunteers']['Insert'];
+export type VolunteerUpdate = Tables['volunteers']['Update'];
+export type StaffProfileRow = Tables['staff_profiles']['Row'];
+export type StaffProfileInsert = Tables['staff_profiles']['Insert'];
+export type PrayerRequestRow = Tables['prayer_requests']['Row'];
+export type PrayerRequestInsert = Tables['prayer_requests']['Insert'];
+export type PrayerRequestUpdate = Tables['prayer_requests']['Update'];
 
 export type LifecycleStage = Enums['lifecycle_stage'];
 export type EngagementSignalKind = Enums['engagement_signal_kind'];
@@ -35,3 +43,12 @@ export type JourneyStatus = Enums['journey_status'];
 export type TouchKind = Enums['touch_kind'];
 export type TouchOwnerRole = Enums['touch_owner_role'];
 export type TouchStatus = Enums['touch_status'];
+
+export type VolunteerRole = 'connections' | 'lay';
+export type PrayerRequestChannel = 'email' | 'sms' | 'connect_card' | 'other';
+export type PrayerRequestStatus =
+  | 'open'
+  | 'in_followup'
+  | 'resolved_no_action'
+  | 'completed'
+  | 'sunset_historical';
