@@ -30,27 +30,28 @@ Every agent in this system operates under the same three laws:
 
 ---
 
-## Agent 2 — Guest Follow-Up Agent
+## Agent 2 — Guest Follow-Up Agent (per-touch drafting)
 
-**Role:** Drafts the first personal communication to every new guest within 24 hours.
+**Role:** Drafts each of the eight standard touches in Champion's voice over the 21-day guest follow-up sequence, plus the contextual reference touch when precious cargo exists.
 
 **Triggers:**
-- Guest profile flagged by Guest Intake Agent
+- A pending touch row reaches its scheduled_for time (or a staff member opens it in the dashboard).
 
 **What it does:**
-- Drafts a personalized, named follow-up email/SMS in Champion's voice
-- Includes: personal name, service date, relevant ministry links, soft invitation to return
-- Presents draft to designated staff member for approval
-- Sends only after human approval
-- Logs communication to person profile
+- Runs the enrichment step first (`src/journey/enrich-touch.ts`) to populate the touch payload with person, sermon, kids, connect-card content, prior touches, precious-cargo references, and assigned-volunteer context.
+- Dispatches to the per-touch drafter under `src/agent/touch-drafting/`:
+  - T1 Sunday SMS, T2 Monday card body, T3 Tuesday email (Becky — includes prayer-elicitation line per ADR-004 §3.4), T4 lay-volunteer call brief (NOT a sent message), T5 Saturday reminder SMS (same volunteer as T1; no exclamation marks, no emoji), T6 Day-10 recovery card (LaCinda or matched leader), T7 Day-14 event invite, T8 Day-21 final warm touch, T9 contextual reference SMS.
+- Enforces the attentiveness standard: if the per-touch required fields are missing, the touch is **held**, not drafted with generic content. The dashboard surfaces held touches to Becky's queue.
+- Cites which voice sample the draft models on (`voice_sample_cited`). When a touch has no canonical sample in `voice-samples.md`, flags `voice_sample_status: 'approximated'` so reviewers know to read with extra care.
+- Runs the standard voice check (Haiku) against every produced draft; failures hold.
 
 **What it never does:**
-- Send without staff approval
-- Use generic or template-sounding language
-- Reference sin, obligation, or pressure language
-- Claim to be a person
+- Send without human approval (Touches 1–8 + T9). The dashboard owns the send action.
+- Use a generic template when attentiveness fields are missing — held > generic.
+- Treat the channel enum as touch identity. Channel is channel; the touch row's `touch_number` + `is_contextual_reference` flag carry identity.
+- Reference data it wasn't given (no inventing sermon titles, kids' names, attendance counts).
 
-**Approval gate:** Every draft requires one-touch approval from designated staff before sending.
+**Approval gate:** Every draft surfaces in the dashboard for review before send. Touch 4 produces an internal brief — the lay volunteer reads it before dialing; "Mark Call Complete" closes the touch from the dashboard.
 
 ---
 
@@ -142,6 +143,40 @@ Every agent in this system operates under the same three laws:
 
 ---
 
+## Agent 7 — Prayer Response Agent
+
+**Role:** Handles personal or sensitive prayer requests per ADR-004. Captures the request, sends a calibrated acknowledgment (not pastoral work), routes the alert to the Pastoral Care Point of Contact, schedules the 48h escalation check, and inserts the Day-11 contextual reference touch.
+
+**Triggers:**
+- An engagement signal of kind `prayer_request` that is classified `personal_or_sensitive`.
+
+**What it does:**
+1. Re-checks pastoral override — if active, yields immediately.
+2. Captures content into `prayer_requests` (RLS-restricted to pastoral_care role). Appends the row id to `people.precious_cargo_refs`.
+3. Drafts a calibrated acknowledgment with explicit forbidden moves (see "What it never does" below).
+4. Runs a deterministic constraint scan (`scanForConstraintViolations`) — regex pass for URLs, scripture references, "praying for you" promises, common platitudes. Failure holds without sending.
+5. Runs the standard voice check.
+6. Sends via the channel the guest used (email or SMS, via the dashboard's Twilio/Resend wiring).
+7. Stamps `acknowledged_at`, `acknowledgment_text`, status `in_followup`, `assigned_to = <PCPOC email>` on the row.
+8. Routes a real-time alert to the PCPOC (default: the staff_profile with `is_default_pcpoc = true` — Becky).
+9. Inserts the Day-11 contextual reference touch onto the active journey (touch_number=9, is_contextual_reference=true, owner = assigned connections volunteer).
+10. Logs to `communications`. Returns telemetry for the dashboard.
+
+The 48h escalation pass is a separate periodic job (`runEscalationCheck`). When a row is `in_followup`, acknowledged > 48h, and `pcpoc_responded_at` is null, it raises a pastoral_flag reason='prayer' so the Pastoral Override Monitor pauses further automation until manually cleared.
+
+**What it never does:**
+- Quote scripture (not a verse, not a paraphrase, not an allusion).
+- Send a resource link of any kind.
+- Characterize the request, the person, or the implied need.
+- Claim to be "praying for you" — the PCPOC does the actual pastoral work.
+- Send any further automated communication on the person's record until the PCPOC clears it.
+
+**Pastoral override interaction:** the Pastoral Override Monitor takes precedence. If a flag is raised for the person while this agent is mid-flight, the agent yields. After acknowledgment, escalation auto-raises a flag if PCPOC silence exceeds 48 hours.
+
+**Voice sample status:** the calibrated acknowledgment is a deliberately new shape (not pastoral, just receipt-of-message warmth). No canonical sample exists. The drafter relies on the inviolable rules above and the constraint scan to keep the output narrow.
+
+---
+
 ## Agent Interaction Map
 
 ```
@@ -150,8 +185,12 @@ PCO Data
     ▼
 [Guest Intake Agent]
     │
+    ├──► prayer_request signal ──► [Prayer Response Agent] ──► calibrated ack
+    │                                                       └─► PCPOC alert + 48h escalation
+    │                                                       └─► Day-11 contextual reference touch
+    │
     ▼
-[Guest Follow-Up Agent] ──── → Staff Approval Gate → Send
+[Guest Follow-Up Agent — per-touch drafters T1..T9] ──── → Staff Approval Gate → Send
     │
     ▼
 [Stage Transition Agent] ──── → Staff Confirmation Gate → Stage Update
@@ -159,7 +198,7 @@ PCO Data
     ├──► [Starting Point Coordinator] ──── → Staff Approval Gate → Invite
     │
     └──► [State of the Church Agent] ──── → ELT Weekly Report
-    
+
 [Pastoral Override Monitor] ══════════════════════════════► PAUSE ALL
 ```
 
@@ -168,9 +207,10 @@ PCO Data
 ## Build Order
 
 1. ✅ Agent roster defined
-2. 🔄 **Guest Intake Agent** — first build
-3. 🔄 **Guest Follow-Up Agent** — first build (paired with Intake)
+2. ✅ **Guest Intake Agent** — operational
+3. ✅ **Guest Follow-Up Agent** — operational, per-touch drafting structure (T1–T9) with attentiveness standard
 4. ⬜ Stage Transition Agent
 5. ⬜ Starting Point Coordinator
 6. ⬜ State of the Church Agent
-7. ⬜ Pastoral Override Monitor (wired in from day one as a stub, fully built after core agents ship)
+7. ✅ **Prayer Response Agent** — operational per ADR-004 (calibrated acknowledgment + PCPOC routing + 48h escalation + contextual reference touch)
+8. 🔄 Pastoral Override Monitor — Phase A live (pastoral_flags + override re-checks at every gate); full standalone monitor still to come

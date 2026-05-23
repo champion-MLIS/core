@@ -179,6 +179,61 @@ Every agent in the MLIS works from this unified person profile. This is the sing
 
 ---
 
+## Precious Cargo (Prayer Requests — ADR-004)
+
+When a guest submits a personal or sensitive prayer request, MLIS captures the full content into the `prayer_requests` table — separate from the person record itself for RLS scoping. The person record holds only **references** (id + date), never content.
+
+```json
+{
+  "precious_cargo_refs": ["prayer_request_id_uuid array — convenience pointer; full data lives in prayer_requests"]
+}
+```
+
+The authoritative `prayer_requests` row:
+
+```json
+{
+  "id": "uuid",
+  "person_pco_id": "string (FK)",
+  "captured_at": "ISO timestamp",
+  "source_signal_id": "uuid | null (FK to engagement_signals)",
+  "content": "string (the actual request — pastoral-only access via RLS)",
+  "channel": "email | sms | connect_card | other",
+  "status": "open | in_followup | resolved_no_action | completed | sunset_historical",
+  "assigned_to": "string (PCPOC email; defaults to the staff_profile with is_default_pcpoc=true)",
+  "acknowledged_at": "ISO timestamp | null",
+  "acknowledgment_text": "string | null (what the Prayer Response Agent sent)",
+  "pcpoc_responded_at": "ISO timestamp | null (set by PCPOC when they reach the person)",
+  "pcpoc_response_notes": "string | null (pastoral-only)",
+  "escalated_at": "ISO timestamp | null (set by the 48h escalation pass)"
+}
+```
+
+**RLS:** Pastoral Care role only (Becky, LaCinda, designated PCPOC, Stephen — see `staff_profiles`). Service-role bypass for system writes (the Prayer Response Agent inserts via service_role).
+
+**Reference-only surfacing:** the dashboard and other agents see `precious_cargo_refs` count + dates only — never content. Content access requires the pastoral_care role (RLS-enforced via `is_pastoral_care()`).
+
+**Sync to PCO:** mirror existence-and-summary to PCO as a person note (`prayer_request_received`, with date and one-line summary — not full content). Full content stays in Supabase until PCO's Pastoral Care permission group is configured (a future slice).
+
+---
+
+## Staff Profiles (Pastoral Care Role Registry)
+
+Pastoral care roles are tracked separately from `people` because they are operators, not subjects of the workflow. The `staff_profiles` table is email-keyed so roles can be assigned before a user signs in to Supabase Auth for the first time — a trigger on `auth.users` backfills `user_id` on first sign-in.
+
+```json
+{
+  "email": "string (primary key, lowercase)",
+  "user_id": "uuid | null (FK to auth.users; backfills on first sign-in)",
+  "full_name": "string",
+  "pastoral_care": "boolean (grants read access to prayer_requests)",
+  "pcpoc_alert_recipient": "boolean (receives real-time alerts on new prayer requests)",
+  "is_default_pcpoc": "boolean (exactly one row may hold this true; partial-unique-index enforced)"
+}
+```
+
+---
+
 ## System Metadata
 
 ```json
