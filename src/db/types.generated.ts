@@ -350,6 +350,86 @@ export type Database = {
         }
         Relationships: []
       }
+      inbound_responses: {
+        Row: {
+          auto_reply_body: string | null
+          auto_reply_sent: boolean
+          body_raw: string
+          callback_due_at: string
+          claimed_at: string | null
+          claimed_by: string | null
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          from_phone: string
+          id: string
+          intent: string
+          keyword: string
+          message_sid: string
+          meta: Json
+          notes: string | null
+          person_pco_id: string | null
+          received_at: string
+          status: string
+          to_phone: string
+          updated_at: string
+        }
+        Insert: {
+          auto_reply_body?: string | null
+          auto_reply_sent?: boolean
+          body_raw: string
+          callback_due_at: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          from_phone: string
+          id?: string
+          intent: string
+          keyword: string
+          message_sid: string
+          meta?: Json
+          notes?: string | null
+          person_pco_id?: string | null
+          received_at?: string
+          status?: string
+          to_phone: string
+          updated_at?: string
+        }
+        Update: {
+          auto_reply_body?: string | null
+          auto_reply_sent?: boolean
+          body_raw?: string
+          callback_due_at?: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          from_phone?: string
+          id?: string
+          intent?: string
+          keyword?: string
+          message_sid?: string
+          meta?: Json
+          notes?: string | null
+          person_pco_id?: string | null
+          received_at?: string
+          status?: string
+          to_phone?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbound_responses_person_pco_id_fkey"
+            columns: ["person_pco_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["pco_id"]
+          },
+        ]
+      }
       pastoral_flags: {
         Row: {
           assigned_to: string | null
@@ -823,6 +903,7 @@ export type Database = {
         | "child_checkin"
         | "prayer_request"
         | "service_attendance"
+        | "broadcast_response"
       followup_status:
         | "pending"
         | "drafting"
@@ -865,3 +946,177 @@ export type Database = {
     }
   }
 }
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      communication_channel: ["email", "sms", "personal_contact"],
+      engagement_signal_kind: [
+        "connect_card",
+        "first_giving",
+        "child_checkin",
+        "prayer_request",
+        "service_attendance",
+        "broadcast_response",
+      ],
+      followup_status: [
+        "pending",
+        "drafting",
+        "awaiting_approval",
+        "sent",
+        "held",
+        "overridden",
+      ],
+      journey_status: ["active", "returned", "completed", "cancelled"],
+      lifecycle_stage: ["guest", "connected", "grouped", "serving", "leader"],
+      pastoral_flag_reason: [
+        "death",
+        "crisis",
+        "prayer",
+        "conflict",
+        "sensitive",
+        "other",
+      ],
+      stage_health: ["active", "at_risk", "inactive"],
+      touch_kind: [
+        "sms",
+        "email",
+        "handwritten_card",
+        "phone_call",
+        "event_invite",
+      ],
+      touch_owner_role: [
+        "connections_volunteer",
+        "senior_pastor",
+        "connections_pastor",
+        "lay_volunteer",
+        "matched_leader",
+      ],
+      touch_status: [
+        "pending",
+        "drafting",
+        "awaiting_action",
+        "completed",
+        "missed",
+        "na",
+      ],
+    },
+  },
+} as const

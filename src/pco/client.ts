@@ -65,7 +65,20 @@ export class PcoClient {
 
   async get<T = unknown>(path: string, opts: PcoRequestOptions = {}): Promise<T> {
     const url = this.buildUrl(path, opts.query);
-    return this.requestWithRetry<T>(url, opts.signal);
+    return this.requestWithRetry<T>(url, 'GET', undefined, opts.signal);
+  }
+
+  /**
+   * POST a JSON:API body to PCO (e.g. create a person). PCO uses the JSON:API
+   * envelope: `{ data: { type, attributes, relationships? } }`.
+   *
+   * Writes are retried on 429/5xx exactly like GETs. Callers must keep the
+   * body idempotent-safe at the business layer — PCO has no upsert, so we
+   * dedup before calling create (see src/pco/people-write.ts).
+   */
+  async post<T = unknown>(path: string, body: unknown, opts: PcoRequestOptions = {}): Promise<T> {
+    const url = this.buildUrl(path, opts.query);
+    return this.requestWithRetry<T>(url, 'POST', body, opts.signal);
   }
 
   private buildUrl(
@@ -86,12 +99,17 @@ export class PcoClient {
     return url.toString();
   }
 
-  private async requestWithRetry<T>(url: string, signal?: AbortSignal): Promise<T> {
+  private async requestWithRetry<T>(
+    url: string,
+    method: 'GET' | 'POST',
+    body: unknown,
+    signal?: AbortSignal,
+  ): Promise<T> {
     let attempt = 0;
     let lastError: unknown;
     while (attempt <= this.maxRetries) {
       try {
-        return await this.requestOnce<T>(url, signal);
+        return await this.requestOnce<T>(url, method, body, signal);
       } catch (err) {
         lastError = err;
         if (!this.shouldRetry(err) || attempt === this.maxRetries) {
@@ -105,19 +123,26 @@ export class PcoClient {
     throw lastError instanceof Error ? lastError : new Error('PCO request failed');
   }
 
-  private async requestOnce<T>(url: string, signal?: AbortSignal): Promise<T> {
+  private async requestOnce<T>(
+    url: string,
+    method: 'GET' | 'POST',
+    body: unknown,
+    signal?: AbortSignal,
+  ): Promise<T> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
     const composed = composeSignals(controller.signal, signal);
 
     try {
       const res = await this.fetchImpl(url, {
-        method: 'GET',
+        method,
         headers: {
           Authorization: this.authHeader,
           Accept: 'application/json',
           'User-Agent': 'champion-mlis/0.0.1',
+          ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
         },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
         signal: composed,
       });
 

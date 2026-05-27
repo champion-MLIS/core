@@ -17,6 +17,13 @@ const EnvSchema = z.object({
       1,
       'SUPABASE_SERVICE_ROLE is required. Grab it from Supabase dashboard → Project Settings → API Keys → service_role.',
     ),
+  // Master switch for the live PCO write in the broadcast processor (Phase F.2).
+  // Default OFF — the processor is a safe no-op (rows stay in the callback
+  // queue) until Stephen runs a controlled smoke test and flips this to 'true'.
+  BROADCAST_PCO_WRITE_ENABLED: z
+    .string()
+    .default('false')
+    .transform((v) => v.toLowerCase() === 'true'),
 });
 
 /**
@@ -37,6 +44,9 @@ const AgentEnvSchema = EnvSchema.extend({
   CHAMPION_KIDS_URL: z.string().url().default('https://champion.church/kids'),
   CHAMPION_GROUPS_URL: z.string().url().default('https://champion.church/groups'),
   CHAMPION_GROWTH_TRACK_URL: z.string().url().default('https://champion.church/growth-track'),
+  // "Three things to do today" page linked from the inbound-keyword auto-reply
+  // (Phase F). Stephen confirms/creates the page; change the URL here or in env.
+  CHAMPION_NEXT_STEPS_URL: z.string().url().default('https://champion.church/next'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

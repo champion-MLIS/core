@@ -227,6 +227,28 @@ describe('enrollGuest', () => {
     }
   });
 
+  it('skips Touch 1 for a broadcast_response enrollment (auto-ack replaces it)', async () => {
+    const fake = makeFakeDb({
+      people: [{ pco_id: '1001', first_name: 'Friend', current_stage: 'guest' }],
+    });
+
+    const result = await enrollGuest(fake.db, {
+      personPcoId: '1001',
+      signalId: 'sig-broadcast',
+      enrollmentKind: 'broadcast_response',
+      now: () => ANCHOR,
+    });
+
+    expect(result.outcome).toBe('enrolled');
+    if (result.outcome !== 'enrolled') throw new Error('unreachable');
+    expect(result.touchCount).toBe(7); // 8 standard minus Touch 1
+
+    const touches = fake.tables['touches']!;
+    expect(touches.find((t) => t['touch_number'] === 1)).toBeUndefined();
+    // Touch 2 (Stephen's Day-2 card) is still the first scheduled touch.
+    expect(touches.find((t) => t['touch_number'] === 2)).toBeDefined();
+  });
+
   it('schedules touches at the right day offsets from enrollment', async () => {
     const fake = makeFakeDb({
       people: [{ pco_id: '1001', current_stage: 'guest' }],

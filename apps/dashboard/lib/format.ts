@@ -48,3 +48,14 @@ function startOfDay(d: Date): Date {
   x.setHours(0, 0, 0, 0);
   return x;
 }
+
+/**
+ * Format an E.164 US number for display: "+19285551234" → "(928) 555-1234".
+ * Falls back to the raw value for anything non-standard.
+ */
+export function formatPhone(e164: string): string {
+  const digits = e164.replace(/\D/g, '');
+  const ten = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  if (ten.length === 10) return `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`;
+  return e164;
+}

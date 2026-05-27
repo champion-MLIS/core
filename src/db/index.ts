@@ -35,6 +35,9 @@ export type StaffProfileInsert = Tables['staff_profiles']['Insert'];
 export type PrayerRequestRow = Tables['prayer_requests']['Row'];
 export type PrayerRequestInsert = Tables['prayer_requests']['Insert'];
 export type PrayerRequestUpdate = Tables['prayer_requests']['Update'];
+export type InboundResponseRow = Tables['inbound_responses']['Row'];
+export type InboundResponseInsert = Tables['inbound_responses']['Insert'];
+export type InboundResponseUpdate = Tables['inbound_responses']['Update'];
 
 export type LifecycleStage = Enums['lifecycle_stage'];
 export type EngagementSignalKind = Enums['engagement_signal_kind'];

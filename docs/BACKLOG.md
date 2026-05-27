@@ -52,9 +52,61 @@ Last reviewed: 2026-05-22.
 
 ### Inbound email/SMS webhook for prayer-request replies
 **Size:** M · **Priority:** medium
-**Description:** When a guest replies to Touch 3's prayer-elicitation email (per ADR-004 §3.4) with a prayer request, that reply needs to be captured as a new `engagement_signal` of kind `prayer_request`. Today the signal poller only reads PCO forms — inbound email replies and inbound SMS aren't ingested. Requires Resend inbound (or Mailgun/SES) for email, Twilio inbound webhook for SMS.
+**Description:** When a guest replies to Touch 3's prayer-elicitation email (per ADR-004 §3.4) with a prayer request, that reply needs to be captured as a new `engagement_signal` of kind `prayer_request`. Today the signal poller only reads PCO forms — inbound email replies and free-text inbound SMS aren't ingested. Requires Resend inbound (or Mailgun/SES) for email; for SMS, the Twilio inbound webhook now **exists** (Phase F, `/api/sms/inbound`) but currently only classifies campaign keywords. Remaining work: route non-keyword inbound SMS (free-text replies) into the prayer-request capture path.
 **Why it matters:** Without this, the elicitation line in T3 is one-way — guests can reply but the system doesn't notice. PCPOC won't get an alert.
-**Dependencies:** Decision on inbound mail provider.
+**Dependencies:** Decision on inbound mail provider (email side). SMS side builds on the Phase F webhook.
+**Owner:** Engineering
+
+---
+
+## Inbound SMS keyword campaign (Phase F — "text HOME")
+
+*Shipped (Phase F): `inbound_responses` table, vendor-free keyword core (`src/inbound/`), signature-validated Twilio webhook (`apps/dashboard/app/api/sms/inbound`), and the dashboard callback queue (`/responses`).*
+
+*Shipped (Phase F.2): `broadcast_response` signal kind; PCO write (`src/pco/people-write.ts`); free-text scan for prayer/salvation/crisis (`src/inbound/free-text-scan.ts`); the decoupled processor + CLI (`npm run broadcast:process`) that mirrors texters into PCO, runs the scan, raises a crisis pastoral_flag when warranted, opens the ADR-004 prayer path in parallel, and enrolls the 21-day journey from Touch 2; dashboard Claim button + flag highlights. The live PCO write is gated by `BROADCAST_PCO_WRITE_ENABLED` (default false). Below is what remains before the keyword can be announced from the stage.*
+
+### Smoke-test + enable the live PCO write
+**Size:** S · **Priority:** high
+**Description:** With `BROADCAST_PCO_WRITE_ENABLED=false`, text HOME from your own phone, confirm the instant reply, then run `npm run broadcast:process` and confirm the row processes in a dry sense. Then flip the flag to `true`, repeat with a real text, confirm a PCO person + phone + journey appear, and delete the test record. Schedule `broadcast:process` on a ~1-minute cron.
+**Why it matters:** This is the controlled Phase-0 proof before automated writes hit the live CRM.
+**Dependencies:** A2P 10DLC (below) for a real advertised campaign.
+**Owner:** Stephen + Engineering
+
+### A2P 10DLC registration for the keyword campaign
+
+### A2P 10DLC registration for the keyword campaign
+**Size:** S · **Priority:** high
+**Description:** Register the Twilio number / messaging service under A2P 10DLC with the church's brand + a campaign use case covering an advertised keyword ("text HOME to the number on the screen"). Carriers aggressively filter unregistered keyword/bulk traffic — exactly the "text a word to a number" pattern.
+**Why it matters:** Without registration, the instant auto-replies risk being silently dropped by carriers. Must be confirmed **before** the keyword is announced from the stage.
+**Dependencies:** None (Twilio Console + brand info).
+**Owner:** Stephen
+
+### "Three things to do today" landing page + CHAMPION_NEXT_STEPS_URL
+**Size:** S · **Priority:** high
+**Description:** Create the page the auto-reply links to (the `[link]` in the approved copy), then set `CHAMPION_NEXT_STEPS_URL` in the dashboard env. Default placeholder is `https://champion.church/next`.
+**Why it matters:** The reply promises "three things to do today: <link>." Until the page exists and the env points at it, the link is a placeholder.
+**Dependencies:** None.
+**Owner:** Stephen + pastoral leadership
+
+### Name enrichment on the callback (refinements to the auto-mirror)
+**Size:** M · **Priority:** medium
+**Description:** The processor now auto-mirrors texters into PCO as "Friend" (phone-only) and enrolls the journey. Remaining polish: (a) a dashboard action on a callback row to set the real name + email/address and have it write back to PCO; (b) PCO-side phone dedup (today dedup is against the local mirror only — someone in PCO but not yet mirrored could create a transient duplicate to merge later); (c) the Day-2 handwritten card surfaces `held_pending_data` until an address is captured.
+**Why it matters:** Turns the "Friend" placeholder into a real, addressable person and avoids duplicate PCO records at the edge.
+**Dependencies:** None.
+**Owner:** Engineering + Becky (enrichment on the call)
+
+### Free-text prayer → automatic ADR-004 acknowledgment
+**Size:** M · **Priority:** low
+**Description:** The processor creates a `prayer_request` signal when prayer language is detected (it surfaces in the precious-cargo queue), but does NOT auto-send the calibrated acknowledgment — the broadcast welcome already promised a human, and we avoid double-texting. If we later want the full ADR-004 ack to fire for these, wire the processor (or a follow-on poller) to run `processPrayerSignal` (likely dryRun for the send) on broadcast-sourced prayer signals.
+**Why it matters:** Completes the "ADR-004 in parallel" vision end-to-end rather than via the manual precious-cargo queue.
+**Dependencies:** Decision on whether a second (prayer) text is desired so soon after the welcome.
+**Owner:** Engineering
+
+### Free-text inbound SMS handling (non-keyword)
+**Size:** M · **Priority:** low
+**Description:** The webhook replies only to recognized keywords; a text that doesn't start with HOME gets no reply and isn't surfaced. Decide how to handle free-text inbound (route to Becky's inbox, capture as a prayer-request signal, or a generic "a person will reach out" path).
+**Why it matters:** A guest who texts something other than HOME currently gets silence from MLIS (Twilio still handles STOP/HELP).
+**Dependencies:** None.
 **Owner:** Engineering
 
 ---

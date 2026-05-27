@@ -46,6 +46,8 @@ export default async function HomePage() {
     { count: pendingTouches },
     { count: activeJourneys },
     { count: returnedJourneys },
+    { count: pendingCallbacks },
+    { count: overdueCallbacks },
     completion,
     recovery,
     returnByTouch,
@@ -60,6 +62,15 @@ export default async function HomePage() {
       .in('status', ['pending', 'drafting', 'awaiting_action']),
     db.from('guest_journeys').select('id', { count: 'exact', head: true }).eq('status', 'active'),
     db.from('guest_journeys').select('id', { count: 'exact', head: true }).eq('status', 'returned'),
+    db
+      .from('inbound_responses')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'needs_callback'),
+    db
+      .from('inbound_responses')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'needs_callback')
+      .lt('callback_due_at', new Date().toISOString()),
     getTouchCompletionRate(db),
     getRecoveryUsage(db),
     getReturnRateByTouch(db),
@@ -83,6 +94,23 @@ export default async function HomePage() {
               className="mr-4 text-sm text-zinc-600 underline-offset-4 hover:underline"
             >
               Worklist
+            </Link>
+            <Link
+              href="/responses"
+              className="mr-4 text-sm text-zinc-600 underline-offset-4 hover:underline"
+            >
+              Callbacks
+              {(pendingCallbacks ?? 0) > 0 && (
+                <span
+                  className={`ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full px-1.5 text-[10px] font-semibold ${
+                    (overdueCallbacks ?? 0) > 0
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}
+                >
+                  {pendingCallbacks}
+                </span>
+              )}
             </Link>
             <Link
               href="/pastor"
@@ -116,8 +144,35 @@ export default async function HomePage() {
           <Tile label="Returned this cycle" value={returnedJourneys ?? 0} />
         </div>
 
+        {/* Inbound keyword callbacks ("text HOME") — surfaces for everyone. */}
+        {(pendingCallbacks ?? 0) > 0 && (
+          <Link
+            href="/responses"
+            className={`block rounded-lg border p-5 hover:shadow-sm ${
+              (overdueCallbacks ?? 0) > 0
+                ? 'border-rose-300 bg-rose-50/60 hover:border-rose-400'
+                : 'border-emerald-200 bg-emerald-50/50 hover:border-emerald-400'
+            }`}
+          >
+            <p className="text-sm font-semibold text-zinc-900">
+              {pendingCallbacks} {pendingCallbacks === 1 ? 'person' : 'people'} texted HOME and{' '}
+              {pendingCallbacks === 1 ? 'is' : 'are'} waiting on a call
+            </p>
+            <p className="mt-1 text-sm text-zinc-600">
+              Each got an instant welcome and the promise of a real person within 24 hours.
+              {(overdueCallbacks ?? 0) > 0 && (
+                <span className="font-semibold text-rose-700">
+                  {' '}
+                  {overdueCallbacks} past the 24-hour window.
+                </span>
+              )}{' '}
+              Open the callback queue →
+            </p>
+          </Link>
+        )}
+
         {/* Precious cargo queue — pastoral_care only (ADR-004) */}
-        {pastoralCare && (preciousCargo.pendingSignals.length > 0 || preciousCargo.activeRequests.length > 0) && (
+        {pastoralCare && (
           <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-5">
             <h2 className="text-sm font-semibold tracking-wide text-violet-900 uppercase">
               Precious cargo
@@ -125,6 +180,15 @@ export default async function HomePage() {
             <p className="mt-1 text-xs text-violet-700">
               Visible to pastoral care role only. ADR-004 §3.1.
             </p>
+
+            {preciousCargo.pendingSignals.length === 0 &&
+              preciousCargo.activeRequests.length === 0 && (
+                <div className="mt-3 rounded-md border border-dashed border-violet-200 bg-white p-4 text-sm text-zinc-600">
+                  No pending precious cargo. New prayer-request signals will surface here for
+                  immediate Prayer Response Agent processing; in-followup items show up under PCPOC
+                  watch.
+                </div>
+              )}
 
             {preciousCargo.pendingSignals.length > 0 && (
               <div className="mt-4">

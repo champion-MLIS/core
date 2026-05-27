@@ -16,6 +16,7 @@
     "touches:status": "tsx src/cli/touches-status.ts",
     "attendance:record": "tsx src/cli/attendance-record.ts",
     "prayer:respond": "tsx src/cli/prayer-response.ts",
+    "broadcast:process": "tsx src/cli/broadcast-process.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

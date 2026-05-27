@@ -8,6 +8,13 @@ export {
   type ListPeopleResult,
 } from './people.ts';
 export {
+  createPerson,
+  addPhoneNumber,
+  type CreatePersonInput,
+  type CreatedPerson,
+  type CreatedPhone,
+} from './people-write.ts';
+export {
   listForms,
   listFormSubmissions,
   submissionPersonId,

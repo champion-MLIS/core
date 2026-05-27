@@ -29,7 +29,11 @@ import {
   getVolunteer,
 } from './volunteers.ts';
 
-export type EnrollmentKind = 'connect_card' | 'first_giving' | 'child_checkin';
+export type EnrollmentKind =
+  | 'connect_card'
+  | 'first_giving'
+  | 'child_checkin'
+  | 'broadcast_response';
 
 const WORKFLOW_VERSION = '21-day-v1';
 
@@ -130,11 +134,18 @@ export async function enrollGuest(db: Db, opts: EnrollOptions): Promise<EnrollRe
   if (connectionsVol) await incrementVolunteerLoad(db, connectionsVol.id);
   if (layVol) await incrementVolunteerLoad(db, layVol.id);
 
-  // 7. Schedule the 8 touches. Route touches to the assigned volunteer's
+  // 7. Schedule the touches. Route touches to the assigned volunteer's
   //    user_id when one exists (the volunteer has signed in to the dashboard).
   //    Otherwise leave owner_user_id NULL and let role-based routing surface
   //    the touch in any matching-role worklist.
-  const touchRows: TouchInsert[] = TOUCH_TEMPLATE.map((t) => {
+  //
+  //    Broadcast responders skip Touch 1: the instant "Welcome home" auto-ack
+  //    they already received IS the Day-1 SMS, warmer than the template. The
+  //    journey effectively begins at Touch 2 (Stephen's Day-2 card).
+  const skipTouchOne = opts.enrollmentKind === 'broadcast_response';
+  const touchRows: TouchInsert[] = TOUCH_TEMPLATE.filter(
+    (t) => !(skipTouchOne && t.touch_number === 1),
+  ).map((t) => {
     const { scheduled_for, due_at } = computeTouchTiming(nowDate, t);
     return {
       journey_id: journey.id,
