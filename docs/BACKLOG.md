@@ -67,7 +67,12 @@ Last reviewed: 2026-05-22.
 
 ### Smoke-test + enable the live PCO write
 **Size:** S · **Priority:** high
-**Description:** With `BROADCAST_PCO_WRITE_ENABLED=false`, text HOME from your own phone, confirm the instant reply, then run `npm run broadcast:process` and confirm the row processes in a dry sense. Then flip the flag to `true`, repeat with a real text, confirm a PCO person + phone + journey appear, and delete the test record. Schedule `broadcast:process` on a ~1-minute cron.
+**Description:** With `BROADCAST_PCO_WRITE_ENABLED=false`, text HOME from your own phone, confirm the instant reply, then run `npm run broadcast:process` and confirm the row processes in a dry sense. Then flip the flag to `true`, repeat with a real text, confirm a PCO person + phone + journey appear, and delete the test record.
+**Scheduling (already wired):** the processor runs on a schedule via the dashboard route `/api/cron/broadcast`, guarded by `CRON_SECRET`.
+  - **Vercel:** `apps/dashboard/vercel.json` declares the cron (`*/5 * * * *`); set `CRON_SECRET`, `PCO_APP_ID`, `PCO_SECRET`, `BROADCAST_PCO_WRITE_ENABLED` in the Vercel project env. Tune the interval as desired (welcome is instant via the webhook; this sweep only affects how fast the PCO mirror + enrollment happen, which has hours of slack).
+  - **Local/other host:** hit the route on a timer, e.g. crontab:
+    `*/5 * * * * curl -s -H "Authorization: Bearer $CRON_SECRET" https://<dashboard-host>/api/cron/broadcast >/dev/null`
+    or run the CLI directly: `*/5 * * * * cd /path/to/mlis && npm run broadcast:process`.
 **Why it matters:** This is the controlled Phase-0 proof before automated writes hit the live CRM.
 **Dependencies:** A2P 10DLC (below) for a real advertised campaign.
 **Owner:** Stephen + Engineering
