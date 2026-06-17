@@ -113,6 +113,12 @@ export default async function HomePage() {
               )}
             </Link>
             <Link
+              href="/volunteers"
+              className="mr-4 text-sm text-zinc-600 underline-offset-4 hover:underline"
+            >
+              Volunteers
+            </Link>
+            <Link
               href="/pastor"
               className="mr-4 text-sm text-zinc-600 underline-offset-4 hover:underline"
             >
