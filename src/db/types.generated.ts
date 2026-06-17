@@ -369,6 +369,7 @@ export type Database = {
           meta: Json
           notes: string | null
           person_pco_id: string | null
+          processing_started_at: string | null
           received_at: string
           status: string
           to_phone: string
@@ -392,6 +393,7 @@ export type Database = {
           meta?: Json
           notes?: string | null
           person_pco_id?: string | null
+          processing_started_at?: string | null
           received_at?: string
           status?: string
           to_phone: string
@@ -415,6 +417,7 @@ export type Database = {
           meta?: Json
           notes?: string | null
           person_pco_id?: string | null
+          processing_started_at?: string | null
           received_at?: string
           status?: string
           to_phone?: string

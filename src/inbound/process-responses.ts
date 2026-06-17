@@ -113,6 +113,19 @@ export async function processInboundResponses(
       continue;
     }
 
+    // Atomic claim: only one runner should ever do the expensive PCO work for
+    // a row. UPDATE ... WHERE processing_started_at IS NULL succeeds for at
+    // most one caller; the other gets a no-op + null result and skips.
+    const { data: claim, error: claimErr } = await db
+      .from('inbound_responses')
+      .update({ processing_started_at: now.toISOString() })
+      .eq('id', row.id)
+      .is('processing_started_at', null)
+      .select('id')
+      .maybeSingle();
+    if (claimErr) throw new Error(`inbound_responses claim failed: ${claimErr.message}`);
+    if (!claim) continue; // another runner already claimed this row
+
     // 1. Resolve the person: dedup against the local mirror by phone, else
     //    create in PCO and mirror locally.
     const local = await findLocalPersonByPhone(db, row.from_phone);

@@ -30,11 +30,16 @@ export interface FreeTextScanResult {
 }
 
 // Acute-danger language. Deliberately broad; a false positive just gets a
-// human looking sooner. Checked FIRST — crisis dominates everything else.
+// human looking sooner, which is the safe direction. Checked FIRST — crisis
+// dominates everything else.
+//
+// "going to die" and "want to die" patterns require intent context to avoid
+// idiomatic matches like "I'm going to die laughing." First-person + intent
+// is the heuristic.
 const CRISIS_PATTERNS: RegExp[] = [
   /\bkill (myself|me)\b/i,
-  /\bend (my|it all|my life)\b/i,
-  /\b(want|going) to die\b/i,
+  /\bend (my life|it all)\b/i,
+  /\b(i|i'?m|i am)\s+(want\s*to|gonna|going\s+to)\s+die\b/i,
   /\bsuicid/i,
   /\bhurt (myself|me)\b/i,
   /\bharm (myself|me)\b/i,

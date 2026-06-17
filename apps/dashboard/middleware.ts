@@ -26,6 +26,10 @@ function isPublic(pathname: string): boolean {
 export async function middleware(req: NextRequest) {
   let response = NextResponse.next({ request: req });
 
+  // Short-circuit public routes — no need to construct a Supabase client or
+  // hit auth.getUser() for Twilio's webhook, the cron, or the /next page.
+  if (isPublic(req.nextUrl.pathname)) return response;
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
@@ -50,7 +54,7 @@ export async function middleware(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!isPublic(req.nextUrl.pathname) && !user) {
+  if (!user) {
     const url = req.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('next', req.nextUrl.pathname);

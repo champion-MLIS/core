@@ -193,6 +193,7 @@ function seedResponse(overrides: Partial<Row> = {}): Row {
     status: 'needs_callback',
     received_at: NOW.toISOString(),
     person_pco_id: null,
+    processing_started_at: null,
     meta: {},
     ...overrides,
   };
@@ -293,6 +294,24 @@ describe('processInboundResponses', () => {
     expect(r.prayerSignals).toBe(1);
     expect(fake.tables['engagement_signals']!.some((s) => s['kind'] === 'prayer_request')).toBe(true);
     expect(r.enrolled).toBe(1); // prayer doesn't block the journey
+  });
+
+  it('skips rows already claimed by another runner (atomic claim)', async () => {
+    const fake = makeFakeDb({
+      // Simulate another runner having claimed this row already.
+      inbound_responses: [seedResponse({ processing_started_at: '2026-05-26T17:59:00Z' })],
+    });
+    const w = makeWriter();
+
+    const r = await processInboundResponses(fake.db, {
+      pcoWriteEnabled: true,
+      writer: w.writer,
+      now: () => NOW,
+    });
+
+    expect(w.calls).toBe(0); // never reached PCO
+    expect(r.pcoCreated).toBe(0);
+    expect(r.processed).toBe(0);
   });
 
   it('skips rows already processed (idempotent)', async () => {

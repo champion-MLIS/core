@@ -27,6 +27,15 @@ export const dynamic = 'force-dynamic';
 
 async function run(req: NextRequest): Promise<NextResponse> {
   const secret = process.env.CRON_SECRET;
+  const isProd = process.env.NODE_ENV === 'production';
+
+  // Fail-closed: production MUST have a CRON_SECRET set, and the request
+  // MUST present it. In dev (NODE_ENV != 'production'), an empty secret
+  // means "anyone on localhost can trigger" — convenient and not exposed.
+  if (isProd && !secret) {
+    console.error('[cron/broadcast] CRON_SECRET not set in production; refusing to run.');
+    return new NextResponse('server not configured', { status: 500 });
+  }
   if (secret) {
     const auth = req.headers.get('authorization');
     if (auth !== `Bearer ${secret}`) {

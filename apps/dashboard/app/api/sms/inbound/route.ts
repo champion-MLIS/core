@@ -68,10 +68,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return new NextResponse('bad request', { status: 400 });
   }
 
-  // --- Signature validation (default ON when an auth token is present) ---
+  // --- Signature validation (default ON; cannot be disabled in production) ---
   const authToken = process.env.TWILIO_AUTH_TOKEN ?? '';
   const validateFlag = (process.env.TWILIO_INBOUND_VALIDATE ?? 'true').toLowerCase();
-  const shouldValidate = validateFlag !== 'false';
+  const isProd = process.env.NODE_ENV === 'production';
+  // In production, TWILIO_INBOUND_VALIDATE=false is ignored — we always validate.
+  // Bypass is only honored in non-production for local testing without a real
+  // Twilio signature (e.g. curl).
+  const shouldValidate = isProd ? true : validateFlag !== 'false';
 
   if (shouldValidate) {
     if (!authToken) {
