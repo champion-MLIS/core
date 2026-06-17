@@ -2,7 +2,13 @@
  * Auth middleware — refreshes the Supabase session on every request and
  * gates access to protected routes.
  *
- * Public routes: /login, /auth/* (the magic-link callback).
+ * Public routes:
+ *   - /login, /auth/*                       — magic-link sign-in flow
+ *   - /api/sms/*                            — Twilio inbound webhook (signature-validated in-route)
+ *   - /api/cron/*                           — scheduled triggers (CRON_SECRET-validated in-route)
+ *   - /next                                 — the "three things to do today" landing page
+ *                                             linked from the inbound-keyword auto-reply
+ *
  * Everything else requires an authenticated, domain-allowlisted user.
  */
 
@@ -11,7 +17,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
-const PUBLIC_PATH_PREFIXES = ['/login', '/auth'];
+const PUBLIC_PATH_PREFIXES = ['/login', '/auth', '/api/sms', '/api/cron', '/next'];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
