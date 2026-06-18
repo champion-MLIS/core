@@ -84,7 +84,7 @@ A private web app, sign-in restricted to `@championchurch.org` emails. Five scre
 
 ## The pastoral override (the non-negotiable safety floor)
 
-Nothing automated proceeds for a person with an active pastoral flag — not enrollment, not drafting, not sending. Triggers include death, crisis, mental-health concern, conflict, or anything flagged sensitive. When raised, the system stops and waits for a human. This is checked at every gate, every time.
+Nothing automated proceeds for a person with an active pastoral flag — not enrollment, not drafting, not sending. A staff member can pause automation for any person at any time; the system also escalates a prayer request left unanswered for 48 hours. When raised, the system stops and waits for a human. This is checked at every gate, every time.
 
 ---
 

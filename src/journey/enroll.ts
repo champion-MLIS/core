@@ -78,7 +78,7 @@ export async function enrollGuest(db: Db, opts: EnrollOptions): Promise<EnrollRe
   // 2. Pastoral override re-check.
   const { data: flag, error: flagErr } = await db
     .from('pastoral_flags')
-    .select('id, reason')
+    .select('id')
     .eq('person_pco_id', opts.personPcoId)
     .is('resolved_at', null)
     .limit(1)
@@ -87,7 +87,7 @@ export async function enrollGuest(db: Db, opts: EnrollOptions): Promise<EnrollRe
   if (flag) {
     return {
       outcome: 'blocked_pastoral_flag',
-      reason: `Active pastoral_flag for person ${opts.personPcoId} (reason: ${flag.reason}). Enrollment blocked.`,
+      reason: `Active pastoral_flag for person ${opts.personPcoId}. Enrollment blocked.`,
     };
   }
 

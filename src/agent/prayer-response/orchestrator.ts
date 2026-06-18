@@ -82,7 +82,7 @@ export async function processPrayerSignal(
   // 1. Pastoral override re-check — supreme.
   const { data: flag, error: fErr } = await db
     .from('pastoral_flags')
-    .select('id, reason')
+    .select('id')
     .eq('person_pco_id', signal.person_pco_id)
     .is('resolved_at', null)
     .limit(1)
@@ -95,7 +95,7 @@ export async function processPrayerSignal(
       acknowledgmentSent: false,
       contextualReferenceTouchId: null,
       pcpocAssignedTo: null,
-      concerns: [`pastoral_flag ${flag.id} active (${flag.reason})`],
+      concerns: [`pastoral_flag ${flag.id} active`],
     };
   }
 

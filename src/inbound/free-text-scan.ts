@@ -2,51 +2,29 @@
  * Free-text scan of an inbound broadcast message (Phase F.2).
  *
  * Someone might text far more than the keyword: "HOME I gave my life to Christ
- * today" or "HOME please pray, my marriage is falling apart" or something in
- * acute crisis. This deterministic scan reads the body and flags three things
- * so the processor can route appropriately. It is intentionally rule-based
- * (no AI) — fast, predictable, and auditable, in the spirit of ADR-004's
- * deterministic constraint scan.
+ * today" or "HOME please pray for my marriage." This deterministic scan reads
+ * the body and flags two things so the processor can route appropriately. It is
+ * intentionally rule-based (no AI) — fast, predictable, and auditable, in the
+ * spirit of ADR-004's deterministic constraint scan.
  *
- * The three categories drive very different handling:
+ * The two categories drive different handling:
  *   - salvation → a joyful, high-priority marker. Does NOT block the journey.
  *   - prayer    → opens the ADR-004 prayer path in parallel (a real person
  *                 follows up on the request; the welcome already promised one).
- *   - crisis    → acute danger language. This PAUSES automation: the processor
- *                 raises a pastoral_flag (override) so no cheerful journey runs;
- *                 a human owns the situation immediately.
  *
- * False positives are acceptable here — over-flagging routes a message to a
- * human, which is the safe direction. We surface the matched terms so staff
- * see why something was flagged.
+ * This program is for everyday people looking for a church home. Every
+ * responder is promised a real human within 24 hours; that human is the care.
+ * Staff can pause automation for any person at any time.
+ *
+ * We surface the matched terms so staff see why something was flagged.
  */
 
 export interface FreeTextScanResult {
   salvation: boolean;
   prayer: boolean;
-  crisis: boolean;
   /** The specific phrases that matched, for transparency in the UI/logs. */
-  matched: { salvation: string[]; prayer: string[]; crisis: string[] };
+  matched: { salvation: string[]; prayer: string[] };
 }
-
-// Acute-danger language. Deliberately broad; a false positive just gets a
-// human looking sooner, which is the safe direction. Checked FIRST — crisis
-// dominates everything else.
-//
-// "going to die" and "want to die" patterns require intent context to avoid
-// idiomatic matches like "I'm going to die laughing." First-person + intent
-// is the heuristic.
-const CRISIS_PATTERNS: RegExp[] = [
-  /\bkill (myself|me)\b/i,
-  /\bend (my life|it all)\b/i,
-  /\b(i|i'?m|i am)\s+(want\s*to|gonna|going\s+to)\s+die\b/i,
-  /\bsuicid/i,
-  /\bhurt (myself|me)\b/i,
-  /\bharm (myself|me)\b/i,
-  /\bno reason to live\b/i,
-  /\bcan'?t go on\b/i,
-  /\boverdose\b/i,
-];
 
 // Positive decision / first-time-faith language.
 const SALVATION_PATTERNS: RegExp[] = [
@@ -91,13 +69,11 @@ function collect(body: string, patterns: RegExp[]): string[] {
 
 export function scanFreeText(body: string): FreeTextScanResult {
   const text = body ?? '';
-  const crisis = collect(text, CRISIS_PATTERNS);
   const salvation = collect(text, SALVATION_PATTERNS);
   const prayer = collect(text, PRAYER_PATTERNS);
   return {
     salvation: salvation.length > 0,
     prayer: prayer.length > 0,
-    crisis: crisis.length > 0,
-    matched: { salvation, prayer, crisis },
+    matched: { salvation, prayer },
   };
 }

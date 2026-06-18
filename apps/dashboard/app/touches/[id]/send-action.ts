@@ -54,14 +54,14 @@ export async function sendTouchAction(formData: FormData): Promise<void> {
   // Pastoral override re-check.
   const { data: flag } = await db
     .from('pastoral_flags')
-    .select('id, reason')
+    .select('id')
     .eq('person_pco_id', personPcoId)
     .is('resolved_at', null)
     .limit(1)
     .maybeSingle();
   if (flag) {
     throw new Error(
-      `Pastoral flag active for this person (${flag.reason}). Send blocked. Resolve the flag before continuing.`,
+      `Pastoral flag active for this person. Send blocked. Resolve the flag before continuing.`,
     );
   }
 

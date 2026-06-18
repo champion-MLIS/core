@@ -335,7 +335,6 @@ describe('runIntakeMirror — pastoral override', () => {
         {
           id: 'flag-1',
           person_pco_id: '1001', // Maria
-          reason: 'sensitive',
           notes: null,
           assigned_to: null,
           raised_at: '2026-05-10T00:00:00Z',
@@ -345,7 +344,6 @@ describe('runIntakeMirror — pastoral override', () => {
         {
           id: 'flag-2',
           person_pco_id: '1002', // James — resolved, should NOT be skipped
-          reason: 'prayer',
           notes: null,
           assigned_to: null,
           raised_at: '2026-05-01T00:00:00Z',

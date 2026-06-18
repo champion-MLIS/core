@@ -22,7 +22,6 @@ const INTENT_LABELS: Record<string, string> = {
 type ResponseMeta = {
   salvation?: boolean;
   prayer?: boolean;
-  crisis?: boolean;
   processed_at?: string;
   pco_action?: string;
 };
@@ -181,11 +180,6 @@ function FlagBadges({ meta }: { meta: ResponseMeta | null }) {
   if (!meta) return null;
   return (
     <div className="mt-1 flex flex-wrap gap-1">
-      {meta.crisis && (
-        <span className="inline-flex rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-          ⚠ crisis — automation paused
-        </span>
-      )}
       {meta.salvation && (
         <span className="inline-flex rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
           decision for Christ
@@ -202,11 +196,10 @@ function FlagBadges({ meta }: { meta: ResponseMeta | null }) {
 
 function PendingRow({ row, now }: { row: ResponseRow; now: number }) {
   const overdue = new Date(row.callback_due_at).getTime() < now;
-  const crisis = row.meta?.crisis === true;
   return (
     <tr
       className={`border-b border-zinc-100 last:border-0 ${
-        crisis ? 'bg-rose-100/70' : overdue ? 'bg-rose-50/60' : 'hover:bg-zinc-50'
+        overdue ? 'bg-rose-50/60' : 'hover:bg-zinc-50'
       }`}
     >
       <td className="px-4 py-3 align-top">

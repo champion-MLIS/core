@@ -139,7 +139,7 @@ export default async function TouchDetailPage({
       .order('touch_number', { ascending: true }),
     db
       .from('pastoral_flags')
-      .select('id, reason, raised_at')
+      .select('id, raised_at, notes')
       .eq('person_pco_id', person.pco_id)
       .is('resolved_at', null),
     preciousCargoIds.length > 0
@@ -247,7 +247,7 @@ export default async function TouchDetailPage({
             </h3>
             <p className="mt-1 text-sm text-red-800">
               {flags.length === 1
-                ? `Reason: ${flags[0]!.reason}. `
+                ? `${flags[0]!.notes ?? 'Paused by staff.'} `
                 : `${flags.length} active flags. `}
               Do not act on this touch without explicit pastoral clearance.
             </p>
@@ -540,23 +540,10 @@ export default async function TouchDetailPage({
                     <details className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm">
                       <summary className="cursor-pointer text-red-800">Pastoral override</summary>
                       <p className="mt-2 text-xs text-red-700">
-                        Pauses ALL automation for this person until manually cleared. Use for
-                        death, crisis, conflict, sensitive material, etc.
+                        Pauses ALL automation for this person until manually cleared.
                       </p>
                       <form action={pastoralOverrideAction} className="mt-3 space-y-2">
                         <input type="hidden" name="touch_id" value={touch.id} />
-                        <select
-                          name="reason"
-                          className="w-full rounded-md border border-red-300 bg-white px-2 py-1 text-sm"
-                          defaultValue="sensitive"
-                        >
-                          <option value="death">Death / bereavement</option>
-                          <option value="crisis">Crisis</option>
-                          <option value="prayer">Prayer (pastoral followup needed)</option>
-                          <option value="conflict">Conflict</option>
-                          <option value="sensitive">Sensitive</option>
-                          <option value="other">Other</option>
-                        </select>
                         <textarea
                           name="notes"
                           rows={2}

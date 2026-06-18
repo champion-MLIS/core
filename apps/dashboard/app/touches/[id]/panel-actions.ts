@@ -178,16 +178,10 @@ export async function clearHoldAction(formData: FormData): Promise<void> {
 
 export async function pastoralOverrideAction(formData: FormData): Promise<void> {
   const touchId = String(formData.get('touch_id') ?? '');
-  const reason = String(formData.get('reason') ?? 'sensitive');
   const notes = String(formData.get('notes') ?? '').trim();
   if (!touchId) throw new Error('touch_id required');
   const email = await requireAuthedEmail();
   const db = createServiceClient();
-
-  const validReasons = new Set(['death', 'crisis', 'prayer', 'conflict', 'sensitive', 'other']);
-  if (!validReasons.has(reason)) {
-    throw new Error(`Invalid reason: ${reason}`);
-  }
 
   // Resolve person.
   const { data: touch, error: tErr } = await db
@@ -211,7 +205,6 @@ export async function pastoralOverrideAction(formData: FormData): Promise<void> 
   if (!existingFlag) {
     const { error: flagErr } = await db.from('pastoral_flags').insert({
       person_pco_id: personPcoId,
-      reason: reason as 'death' | 'crisis' | 'prayer' | 'conflict' | 'sensitive' | 'other',
       notes: notes || `Raised from touch ${touchId} by ${email}.`,
       assigned_to: email,
     });
@@ -222,7 +215,7 @@ export async function pastoralOverrideAction(formData: FormData): Promise<void> 
   await db
     .from('touches')
     .update({
-      notes: `Pastoral override raised by ${email} (${reason}). Automation paused for this person.`,
+      notes: `Automation paused for this person by ${email}.`,
     })
     .eq('id', touchId);
 

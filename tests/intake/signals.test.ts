@@ -313,7 +313,6 @@ describe('runSignalsPoll — happy path', () => {
         {
           id: 'flag-1',
           person_pco_id: '1001',
-          reason: 'sensitive',
           resolved_at: null,
         },
       ],

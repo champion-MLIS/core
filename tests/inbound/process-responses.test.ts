@@ -261,9 +261,12 @@ describe('processInboundResponses', () => {
     expect(fake.tables['inbound_responses']![0]!['person_pco_id']).toBe('2001');
   });
 
-  it('raises a crisis flag and does NOT enroll when crisis language is present', async () => {
+  it('still enrolls when no pastoral_flag is present', async () => {
+    // Regression guard: the inbound processor does NOT auto-raise any flag.
+    // An ordinary HOME text enrolls normally; only a human-raised
+    // pastoral_flag (tested in enroll.test.ts) blocks enrollment.
     const fake = makeFakeDb({
-      inbound_responses: [seedResponse({ body_raw: 'HOME I want to end my life' })],
+      inbound_responses: [seedResponse({ body_raw: 'HOME just moved to the area' })],
     });
     const w = makeWriter();
 
@@ -273,10 +276,8 @@ describe('processInboundResponses', () => {
       now: () => NOW,
     });
 
-    expect(r.crisisFlagged).toBe(1);
-    expect(r.enrolled).toBe(0); // enrollGuest self-blocks on the pastoral flag
-    expect(fake.tables['pastoral_flags']!.some((f) => f['reason'] === 'crisis')).toBe(true);
-    expect(fake.tables['touches']!).toHaveLength(0);
+    expect(fake.tables['pastoral_flags']!).toHaveLength(0);
+    expect(r.enrolled).toBe(1);
   });
 
   it('opens the prayer path in parallel when prayer language is present', async () => {

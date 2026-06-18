@@ -117,14 +117,11 @@ Every communication this system produces must sound like Champion Church — not
 
 > AI proposes. Humans approve. Any situation requiring a decision requires a pastoral gate.
 
-**Automatic override triggers:**
-- Death or bereavement
-- Crisis or mental health concern
-- Prayer request (personal or sensitive)
-- Conflict or relational tension
-- Any communication flagged as sensitive
+**When automation pauses:**
+- A staff member pauses automation for a person (no reason required)
+- The system escalates a prayer request left unanswered for 48 hours
 
-When an override is triggered, the system pauses, alerts the appropriate staff member, and waits for human direction. Nothing sends. No decisions are made.
+When automation is paused, the system alerts the appropriate staff member and waits for human direction. Nothing sends. No decisions are made.
 
 ---
 

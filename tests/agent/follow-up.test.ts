@@ -484,7 +484,7 @@ describe('runFollowUpAgent — orchestrator', () => {
         { pco_id: '1001', first_name: 'Maria', current_stage: 'guest', household_pco_id: null, is_child: false },
       ],
       pastoral_flags: [
-        { id: 'pf-1', person_pco_id: '1001', reason: 'sensitive', resolved_at: null },
+        { id: 'pf-1', person_pco_id: '1001', resolved_at: null },
       ],
       followup_queue: [
         {

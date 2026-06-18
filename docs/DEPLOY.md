@@ -153,7 +153,7 @@ Each of them goes to `https://<your-vercel-url>/login`, enters their `@championc
 
 - **Becky** lives in the dashboard. New "text HOME" responses appear on `/responses` with a 24-hour clock and a Claim button.
 - The cron sweeps every 5 minutes — new PCO records and 21-day journeys appear automatically.
-- Anything flagged **crisis** halts automation and shows in red — that person needs immediate human contact.
+- Every responder is promised a real person within 24 hours — that human callback is the care. This program is built for everyday people looking for a church home.
 - You and Becky check `/` daily for overall metrics and overdue work.
 
 If anything breaks, the most useful place to start debugging is **Vercel → Logs** on the dashboard project.

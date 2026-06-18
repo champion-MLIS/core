@@ -129,7 +129,6 @@ Every agent in this system operates under the same three laws:
 **Triggers:**
 - Prayer request flagged as personal or sensitive
 - Death or bereavement signal detected
-- Crisis language detected in any incoming communication
 - Conflict flag raised by staff
 - Any agent attempts to communicate with a flagged profile
 

@@ -440,7 +440,6 @@ export type Database = {
           notes: string | null
           person_pco_id: string
           raised_at: string
-          reason: Database["public"]["Enums"]["pastoral_flag_reason"]
           resolved_at: string | null
           resolved_by: string | null
         }
@@ -450,7 +449,6 @@ export type Database = {
           notes?: string | null
           person_pco_id: string
           raised_at?: string
-          reason: Database["public"]["Enums"]["pastoral_flag_reason"]
           resolved_at?: string | null
           resolved_by?: string | null
         }
@@ -460,7 +458,6 @@ export type Database = {
           notes?: string | null
           person_pco_id?: string
           raised_at?: string
-          reason?: Database["public"]["Enums"]["pastoral_flag_reason"]
           resolved_at?: string | null
           resolved_by?: string | null
         }
@@ -916,13 +913,6 @@ export type Database = {
         | "overridden"
       journey_status: "active" | "returned" | "completed" | "cancelled"
       lifecycle_stage: "guest" | "connected" | "grouped" | "serving" | "leader"
-      pastoral_flag_reason:
-        | "death"
-        | "crisis"
-        | "prayer"
-        | "conflict"
-        | "sensitive"
-        | "other"
       stage_health: "active" | "at_risk" | "inactive"
       touch_kind:
         | "sms"
@@ -1089,14 +1079,6 @@ export const Constants = {
       ],
       journey_status: ["active", "returned", "completed", "cancelled"],
       lifecycle_stage: ["guest", "connected", "grouped", "serving", "leader"],
-      pastoral_flag_reason: [
-        "death",
-        "crisis",
-        "prayer",
-        "conflict",
-        "sensitive",
-        "other",
-      ],
       stage_health: ["active", "at_risk", "inactive"],
       touch_kind: [
         "sms",

@@ -7,7 +7,6 @@ describe('scanFreeText', () => {
     const r = scanFreeText('HOME');
     expect(r.salvation).toBe(false);
     expect(r.prayer).toBe(false);
-    expect(r.crisis).toBe(false);
   });
 
   it('detects salvation language', () => {
@@ -21,12 +20,6 @@ describe('scanFreeText', () => {
     expect(scanFreeText('HOME my mom was just diagnosed').prayer).toBe(true);
   });
 
-  it('detects crisis language', () => {
-    expect(scanFreeText('I want to end my life').crisis).toBe(true);
-    expect(scanFreeText('thinking about suicide').crisis).toBe(true);
-    expect(scanFreeText("I can't go on").crisis).toBe(true);
-  });
-
   it('can flag multiple categories at once', () => {
     const r = scanFreeText('HOME I want to give my life to Jesus but I am struggling badly');
     expect(r.salvation).toBe(true);
@@ -37,5 +30,11 @@ describe('scanFreeText', () => {
     const r = scanFreeText('please pray, I got saved');
     expect(r.matched.salvation.length).toBeGreaterThan(0);
     expect(r.matched.prayer.length).toBeGreaterThan(0);
+  });
+
+  it('exposes only the salvation and prayer categories (no other detection)', () => {
+    const r = scanFreeText('just checking on the service times this weekend');
+    // The scan result exposes exactly two categories — nothing else.
+    expect(Object.keys(r.matched).sort()).toEqual(['prayer', 'salvation']);
   });
 });

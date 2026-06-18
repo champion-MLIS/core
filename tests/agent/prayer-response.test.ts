@@ -169,7 +169,7 @@ describe('insertContextualReferenceTouch', () => {
   it('suppresses when an active pastoral_flag exists', async () => {
     const fake = makeFakeDb({
       people: [{ pco_id: '1001' }],
-      pastoral_flags: [{ id: 'pf-1', person_pco_id: '1001', reason: 'prayer', resolved_at: null }],
+      pastoral_flags: [{ id: 'pf-1', person_pco_id: '1001', resolved_at: null }],
       prayer_requests: [{ id: 'pr-1', person_pco_id: '1001', status: 'in_followup' }],
     });
     const result = await insertContextualReferenceTouch(fake.db, {
@@ -325,7 +325,7 @@ describe('processPrayerSignal — orchestrator', () => {
   it('blocks when an active pastoral_flag exists', async () => {
     const fake = makeFakeDb({
       people: [{ pco_id: '1001' }],
-      pastoral_flags: [{ id: 'pf-1', person_pco_id: '1001', reason: 'crisis', resolved_at: null }],
+      pastoral_flags: [{ id: 'pf-1', person_pco_id: '1001', resolved_at: null }],
     });
     const claude = makeClaude([]); // no Claude calls expected
     const signal = makeSignal();
@@ -433,7 +433,7 @@ describe('runEscalationCheck', () => {
     expect(pr['escalated_at']).toBeTruthy();
     // Pastoral flag raised
     expect(fake.tables['pastoral_flags']).toHaveLength(1);
-    expect(fake.tables['pastoral_flags']![0]!['reason']).toBe('prayer');
+    expect(fake.tables['pastoral_flags']![0]!['notes']).toContain('Prayer request');
   });
 
   it('skips prayer_requests acknowledged < 48h ago', async () => {

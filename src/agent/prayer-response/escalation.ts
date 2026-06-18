@@ -7,9 +7,9 @@
  *   - acknowledged_at + 48h <= now
  *   - pcpoc_responded_at is null
  *   - escalated_at is null
- * mark escalated_at = now, raise a pastoral_flag with reason='prayer' so
- * the Pastoral Override Monitor pauses any further automation on this
- * person until manually cleared.
+ * mark escalated_at = now, raise a pastoral_flag so the Pastoral Override
+ * Monitor pauses any further automation on this person until manually
+ * cleared.
  *
  * The "escalates to Becky" routing happens implicitly: the
  * pcpoc_alert_recipient flag identifies who watches the dashboard for
@@ -63,7 +63,6 @@ export async function runEscalationCheck(
       // anything else automated for this person until manually cleared.
       await db.from('pastoral_flags').insert({
         person_pco_id: pr.person_pco_id,
-        reason: 'prayer',
         notes: `Prayer request ${pr.id} not addressed within 48h. Auto-escalated by Prayer Response Agent. ADR-004 §3.1.`,
         assigned_to: pr.assigned_to,
       });

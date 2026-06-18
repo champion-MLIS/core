@@ -74,7 +74,7 @@ These are inviolable. Every agent inherits them.
 
 **Voice fidelity** — every outbound communication sounds like Champion Church. Warm, confident, Yuma-grounded, kingdom-minded, never corporate, never sappy, never trying too hard. The voice spec is the source of truth.
 
-**Pastoral override** — the system stops and hands off to a human for: death, marital crisis, mental health crisis, church departure signals, doctrinal dispute, abuse disclosure, anything ambiguous. When in doubt, hand off.
+**Pastoral override** — a staff member can pause automation for any person at any time. While paused, the system hands off and nothing automated proceeds. When in doubt, hand off.
 
 **Human approval gates** — no message goes out without a defined approval path. Some are pre-approved templates (welcome series). Some require a staff sign-off (anniversary touch from Pastor Stephen). Some require ELT review (membership invitation). The gate is part of the workflow definition, not an afterthought.
 

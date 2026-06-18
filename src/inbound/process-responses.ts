@@ -11,11 +11,10 @@
  *      in MLIS), gated behind a feature flag, then mirror locally.
  *   3. Record a `broadcast_response` engagement signal.
  *   4. Free-text scan the message:
- *        - crisis   → raise a pastoral_flag (reason 'crisis'); enrollment then
- *                     self-blocks. A human owns the situation. No journey runs.
  *        - prayer   → create a `prayer_request` signal so the ADR-004 path
  *                     engages in parallel (the welcome already promised a human).
  *        - salvation→ mark high-priority; the journey proceeds.
+ *      (A human still calls every responder within 24 hours.)
  *   5. Enroll the 21-day journey (skipping Touch 1 — the auto-ack covered it).
  *   6. Stamp the row processed.
  *
@@ -56,7 +55,6 @@ export interface ProcessResult {
   enrolled: number;
   prayerSignals: number;
   salvationFlagged: number;
-  crisisFlagged: number;
   skippedDisabled: number;
 }
 
@@ -85,7 +83,6 @@ export async function processInboundResponses(
     enrolled: 0,
     prayerSignals: 0,
     salvationFlagged: 0,
-    crisisFlagged: 0,
     skippedDisabled: 0,
   };
 
@@ -159,16 +156,10 @@ export async function processInboundResponses(
       .update({ person_pco_id: personPcoId, updated_at: now.toISOString() })
       .eq('id', row.id);
 
-    // 2. Free-text scan.
+    // 2. Free-text scan (salvation + prayer).
     const scan = scanFreeText(row.body_raw);
 
-    // 3. Crisis → pastoral override. Raise a flag; enrollment self-blocks.
-    if (scan.crisis) {
-      await raiseCrisisFlag(db, personPcoId, row.body_raw, now);
-      result.crisisFlagged++;
-    }
-
-    // 4. Record the broadcast_response engagement signal (idempotent).
+    // 3. Record the broadcast_response engagement signal (idempotent).
     const broadcastSignalId = await ensureSignal(db, {
       personPcoId,
       kind: 'broadcast_response',
@@ -177,10 +168,10 @@ export async function processInboundResponses(
       payload: { keyword: row.keyword, intent: row.intent, channel: 'sms', body: row.body_raw },
     });
 
-    // 5. Prayer → open the ADR-004 path in parallel by creating a
+    // 4. Prayer → open the ADR-004 path in parallel by creating a
     //    prayer_request signal. It surfaces in the precious-cargo queue; the
     //    welcome already promised a human, so we don't send a second ack here.
-    if (scan.prayer && !scan.crisis) {
+    if (scan.prayer) {
       await ensureSignal(db, {
         personPcoId,
         kind: 'prayer_request',
@@ -193,8 +184,8 @@ export async function processInboundResponses(
 
     if (scan.salvation) result.salvationFlagged++;
 
-    // 6. Enroll the 21-day journey (skips Touch 1). enrollGuest self-blocks if
-    //    a pastoral_flag is active (e.g. the crisis flag we may have just set).
+    // 5. Enroll the 21-day journey (skips Touch 1). enrollGuest self-blocks if
+    //    an active pastoral_flag exists (a human-raised override).
     const enrollment = await enrollGuest(db, {
       personPcoId,
       signalId: broadcastSignalId,
@@ -203,7 +194,7 @@ export async function processInboundResponses(
     });
     if (enrollment.outcome === 'enrolled') result.enrolled++;
 
-    // 7. Stamp processed.
+    // 6. Stamp processed.
     await db
       .from('inbound_responses')
       .update({
@@ -214,7 +205,6 @@ export async function processInboundResponses(
           scan: scan.matched as unknown as Json,
           salvation: scan.salvation,
           prayer: scan.prayer,
-          crisis: scan.crisis,
           enrollment: enrollment.outcome,
         } as Json,
         updated_at: now.toISOString(),
@@ -282,32 +272,6 @@ async function mirrorNewPerson(
     is_primary: true,
   });
   if (phErr) throw new Error(`phone_numbers mirror insert failed: ${phErr.message}`);
-}
-
-async function raiseCrisisFlag(
-  db: Db,
-  personPcoId: string,
-  body: string,
-  now: Date,
-): Promise<void> {
-  // Don't double-raise if an active crisis flag already exists.
-  const { data: existing } = await db
-    .from('pastoral_flags')
-    .select('id')
-    .eq('person_pco_id', personPcoId)
-    .eq('reason', 'crisis')
-    .is('resolved_at', null)
-    .limit(1)
-    .maybeSingle();
-  if (existing) return;
-
-  const { error } = await db.from('pastoral_flags').insert({
-    person_pco_id: personPcoId,
-    reason: 'crisis',
-    notes: `Crisis language in inbound broadcast text: "${body}". Automation paused — needs immediate human contact.`,
-    raised_at: now.toISOString(),
-  });
-  if (error) throw new Error(`pastoral_flags insert failed: ${error.message}`);
 }
 
 async function ensureSignal(

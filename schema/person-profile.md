@@ -168,7 +168,6 @@ Every agent in the MLIS works from this unified person profile. This is the sing
 {
   "pastoral_flags": {
     "override_active": "boolean",
-    "override_reason": "death | crisis | prayer | conflict | sensitive | other",
     "override_date": "ISO date | null",
     "assigned_to": "staff_name | null",
     "notes": "string (restricted — pastoral eyes only)",

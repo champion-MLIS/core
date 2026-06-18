@@ -63,7 +63,9 @@ Last reviewed: 2026-05-22.
 
 *Shipped (Phase F): `inbound_responses` table, vendor-free keyword core (`src/inbound/`), signature-validated Twilio webhook (`apps/dashboard/app/api/sms/inbound`), and the dashboard callback queue (`/responses`).*
 
-*Shipped (Phase F.2): `broadcast_response` signal kind; PCO write (`src/pco/people-write.ts`); free-text scan for prayer/salvation/crisis (`src/inbound/free-text-scan.ts`); the decoupled processor + CLI (`npm run broadcast:process`) that mirrors texters into PCO, runs the scan, raises a crisis pastoral_flag when warranted, opens the ADR-004 prayer path in parallel, and enrolls the 21-day journey from Touch 2; dashboard Claim button + flag highlights. The live PCO write is gated by `BROADCAST_PCO_WRITE_ENABLED` (default false). Below is what remains before the keyword can be announced from the stage.*
+*Shipped (Phase F.2): `broadcast_response` signal kind; PCO write (`src/pco/people-write.ts`); free-text scan for prayer/salvation (`src/inbound/free-text-scan.ts`); the decoupled processor + CLI (`npm run broadcast:process`) that mirrors texters into PCO, runs the scan, opens the ADR-004 prayer path in parallel, and enrolls the 21-day journey from Touch 2; dashboard Claim button + flag highlights. The live PCO write is gated by `BROADCAST_PCO_WRITE_ENABLED` (default false). Below is what remains before the keyword can be announced from the stage.*
+
+*Design decision (2026-06-17): this program is built for everyday people seeking a church home — every responder is promised a real human within 24 hours. A staff member can pause automation for any person at any time.*
 
 ### Smoke-test + enable the live PCO write
 **Size:** S · **Priority:** high
@@ -180,8 +182,8 @@ Last reviewed: 2026-05-22.
 
 ### Agent 6 — Pastoral Override Monitor (full standalone)
 **Size:** M · **Priority:** medium
-**Description:** Today, pastoral override is a flag-check at every gate (enrollment, drafting, sending). A full standalone monitor watches for new override triggers proactively — death, abuse, suicide ideation, crisis language detection in incoming communications.
-**Why it matters:** Active detection vs. reactive checking. Catches crisis signals before they fall through a gate.
+**Description:** Today, pastoral override is a flag-check at every gate (enrollment, drafting, sending). A full standalone monitor would centralize that enforcement and proactively surface behavior-change flags (giving, serving, or attendance shifts) for human review.
+**Why it matters:** Centralized enforcement and proactive surfacing of changes, vs. reactive per-gate checking.
 **Dependencies:** None — extends existing pastoral_flags infrastructure.
 **Owner:** Engineering
 

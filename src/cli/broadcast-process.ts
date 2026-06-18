@@ -40,9 +40,6 @@ function printHumanSummary(r: ProcessResult, pcoWriteEnabled: boolean): void {
   console.log(`  Journeys enrolled:    ${r.enrolled}`);
   console.log(`  Prayer signals:       ${r.prayerSignals}`);
   console.log(`  Salvation flagged:    ${r.salvationFlagged}`);
-  if (r.crisisFlagged > 0) {
-    console.log(`  ⚠ CRISIS flagged:     ${r.crisisFlagged} (pastoral_flag raised; automation paused)`);
-  }
   console.log('');
 }
 

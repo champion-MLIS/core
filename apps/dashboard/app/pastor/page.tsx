@@ -42,7 +42,7 @@ export default async function PastorPage() {
     db
       .from('pastoral_flags')
       .select(
-        'id, reason, raised_at, notes, person_pco_id, people!inner ( first_name, last_name, preferred_name, pco_id )',
+        'id, raised_at, notes, person_pco_id, people!inner ( first_name, last_name, preferred_name, pco_id )',
       )
       .is('resolved_at', null)
       .order('raised_at', { ascending: false }),
@@ -134,8 +134,8 @@ export default async function PastorPage() {
             <div className="mt-3 rounded-lg border border-zinc-200 bg-white p-5">
               <p className="text-sm text-zinc-700">No active pastoral flags right now.</p>
               <p className="mt-1 text-xs text-zinc-500">
-                Flags are raised when a signal hits an override trigger (death, crisis, sensitive
-                prayer request, etc.) or when staff manually escalate.
+                Flags are raised when staff pause automation for a person, or
+                when the system escalates an unanswered prayer request.
               </p>
             </div>
           ) : (
@@ -155,7 +155,7 @@ export default async function PastorPage() {
                       <div className="flex items-baseline justify-between">
                         <span className="font-medium text-zinc-900">{name}</span>
                         <span className="text-xs text-red-800">
-                          {relativeDay(f.raised_at)} · reason: {f.reason}
+                          {relativeDay(f.raised_at)}
                         </span>
                       </div>
                       {f.notes && (

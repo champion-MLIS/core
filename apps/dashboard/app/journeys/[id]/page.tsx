@@ -100,7 +100,7 @@ export default async function JourneyPage({
         : Promise.resolve({ data: null, error: null }),
       db
         .from('pastoral_flags')
-        .select('id, reason, raised_at')
+        .select('id, raised_at, notes')
         .eq('person_pco_id', person.pco_id)
         .is('resolved_at', null),
       db
@@ -207,7 +207,7 @@ export default async function JourneyPage({
               ⚠️ Pastoral flag active — automated touches paused
             </h3>
             <p className="mt-1 text-sm text-red-800">
-              {flags.map((f) => `${f.reason}`).join(', ')}. Do not act without explicit clearance.
+              {flags.map((f) => f.notes ?? 'Paused by staff').join(', ')}. Do not act without explicit clearance.
             </p>
           </div>
         )}
