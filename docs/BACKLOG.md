@@ -59,6 +59,17 @@ Last reviewed: 2026-05-22.
 
 ---
 
+## 90-Day Assimilation Pipeline + Champion Next Steps
+
+### 90-day assimilation follow-up + Champion Next Steps class
+**Size:** L · **Priority:** high
+**Description:** A post-21-day pipeline (Day ~21–90) that reconnects with each new person to check assimilation/integration, asks if they need anything or want to talk to a human, and walks them through **Champion Next Steps** — a gated video-study path: New-Christian fork → Our Beliefs → What Champion Church Offers → How to Get Involved / Embracing the Champion Culture (prereq to serve) → Made In His Image (8 attributes), then optional branching. On completion, a human reaches out to coach them into a serving lane. If still not connected / studies undone after both the 21-day and 90-day pipelines, flag **incomplete** and periodically re-prompt over time. Full design: `workflows/ninety-day-assimilation/spec.md`.
+**Why it matters:** The 21-day journey only covers the landing phase. Without this, a guest who lands is then dropped — the "first 90 days, then first year" cadence has no implementation. Stephen wants this in place around go-live.
+**Dependencies:** Champion Next Steps video content + 8-attributes study (not yet created). A study-completion signal source. Several design decisions open (see spec).
+**Owner:** Stephen (vision/content) · Engineering (build)
+
+---
+
 ## Inbound SMS keyword campaign (Phase F — "text HOME")
 
 *Shipped (Phase F): `inbound_responses` table, vendor-free keyword core (`src/inbound/`), signature-validated Twilio webhook (`apps/dashboard/app/api/sms/inbound`), and the dashboard callback queue (`/responses`).*
